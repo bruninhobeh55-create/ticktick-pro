@@ -46,8 +46,12 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
 
     await page.goto('/');
 
-    // 1. Verify PC Right Inspector Resize Handle exists
+    // 1. Verify PC Right Inspector Resize Handle exists & Test Reminder Alert Trigger
     await expect(page.locator('[aria-label="Resize Right Inspector"]')).toBeVisible();
+    await page.getByRole('button', { name: 'Test Alert' }).first().click();
+    await expect(page.locator('[role="alertdialog"]')).toBeVisible();
+    await page.getByRole('button', { name: 'Dismiss', exact: true }).click();
+    await expect(page.locator('[role="alertdialog"]')).toHaveCount(0);
 
     // 2. Edit a Folder name & Delete a Tag via Three-Dots (...) Context Menu in Sidebar
     await page.locator('button[aria-label="Folder options Product & Engineering"]').click();

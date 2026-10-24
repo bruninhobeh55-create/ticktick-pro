@@ -112,6 +112,35 @@ class SoundEngine {
     }
   }
 
+  public playReminderAlarm() {
+    try {
+      const ctx = this.ensureContext();
+      const pattern = [
+        { freq: 659.25, offset: 0 },
+        { freq: 880.0, offset: 0.14 },
+        { freq: 1046.5, offset: 0.28 },
+        { freq: 659.25, offset: 0.5 },
+        { freq: 880.0, offset: 0.64 },
+        { freq: 1174.66, offset: 0.78 },
+      ];
+      pattern.forEach(({ freq, offset }) => {
+        const start = ctx.currentTime + offset;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, start);
+        gain.gain.setValueAtTime(0.25, start);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.35);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.35);
+      });
+    } catch {
+      // Ignore blocked audio policy
+    }
+  }
+
   public stopWhiteNoise() {
     if (this.tickInterval) {
       window.clearInterval(this.tickInterval);

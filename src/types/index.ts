@@ -34,6 +34,13 @@ export type ThemeId =
   | 'sakura-rose'
   | 'nordic-slate';
 
+export interface ActiveReminderAlert {
+  task: Task;
+  reminderLabel: string;
+  triggeredAt: string;
+  isConstant?: boolean;
+}
+
 export interface Subtask {
   id: string;
   title: string;

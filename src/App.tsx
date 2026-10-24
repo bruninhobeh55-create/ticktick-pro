@@ -1,4 +1,5 @@
 import React from 'react';
+import { ActiveReminderModal } from './components/ActiveReminderModal';
 import { CalendarModule } from './components/CalendarModule';
 import { CommandPaletteModal } from './components/CommandPaletteModal';
 import { CountdownModule } from './components/CountdownModule';
@@ -43,6 +44,7 @@ const MainShell: React.FC = () => {
       {/* Global Overlays & Emil Kowalski Sonner Toast Stack */}
       <CommandPaletteModal />
       <SettingsAndSupabaseModal />
+      <ActiveReminderModal />
       <SonnerToaster toasts={toasts} onDismiss={dismissToast} />
     </div>
   );

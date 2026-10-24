@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { ToastItem } from '../components/SonnerToaster';
 import {
   INITIAL_CALENDAR_SUBSCRIPTIONS,
@@ -18,6 +18,7 @@ import {
 } from '../data/seedData';
 import { getSupabaseClient, getSupabaseConfig, saveRuntimeSupabaseConfig } from '../lib/supabase';
 import {
+  ActiveReminderAlert,
   CalendarSubscription,
   CountdownItem,
   CustomFilter,
@@ -206,6 +207,14 @@ interface AppContextValue {
   resetDemoWorkspace: () => void;
   clearAllWorkspaceData: () => void;
 
+  // Reminders & Active Alerts
+  activeReminder: ActiveReminderAlert | null;
+  dismissActiveReminder: () => void;
+  snoozeActiveReminder: (minutes?: number) => void;
+  triggerTaskReminderNow: (taskId: string) => void;
+  requestNotificationPermission: () => Promise<boolean>;
+  notificationPermission: NotificationPermission;
+
   // Supabase Backend Sync
   supabaseStatus: 'local_only' | 'connected' | 'syncing' | 'error';
   supabaseUserEmail: string | null;
@@ -312,6 +321,143 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  // Real-Time Reminders & OS Notification Engine
+  const [activeReminder, setActiveReminder] = useState<ActiveReminderAlert | null>(null);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      return Notification.permission;
+    }
+    return 'default';
+  });
+
+  const firedRemindersRef = useRef<Set<string>>(new Set());
+
+  const requestNotificationPermission = useCallback(async (): Promise<boolean> => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return false;
+    try {
+      const res = await Notification.requestPermission();
+      setNotificationPermission(res);
+      if (res === 'granted') {
+        pushToast({
+          title: 'Notifications Enabled',
+          description: 'You will receive desktop & mobile alerts when task reminders arrive',
+          kind: 'success',
+        });
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }, [pushToast]);
+
+  const fireReminder = useCallback((task: Task, label: string) => {
+    // 1. Play audio alert chime
+    if (preferences.soundAlertEnabled) {
+      soundEngine.playReminderAlarm();
+    }
+
+    // 2. Dispatch native OS desktop notification if permitted
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        new Notification(`TickTick Alert: ${task.title}`, {
+          body: `${label} • Due ${task.dueDate || 'Today'} ${task.startTime || ''}`.trim(),
+          icon: '/favicon.ico',
+        });
+      } catch {
+        // ignore
+      }
+    }
+
+    // 3. Set in-app active reminder modal
+    setActiveReminder({
+      task,
+      reminderLabel: label,
+      triggeredAt: format(new Date(), 'HH:mm'),
+      isConstant: task.constantReminder,
+    });
+  }, [preferences.soundAlertEnabled]);
+
+  const dismissActiveReminder = useCallback(() => {
+    setActiveReminder(null);
+  }, []);
+
+  const snoozeActiveReminder = useCallback((minutes = 5) => {
+    if (!activeReminder) return;
+    const currentTask = activeReminder.task;
+    setActiveReminder(null);
+    pushToast({
+      title: `Snoozed for ${minutes}m`,
+      description: currentTask.title,
+      kind: 'info',
+    });
+    window.setTimeout(() => {
+      fireReminder(currentTask, `Snoozed (${minutes}m)`);
+    }, minutes * 60 * 1000);
+  }, [activeReminder, fireReminder, pushToast]);
+
+  const triggerTaskReminderNow = useCallback((taskId: string) => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+    fireReminder(task, 'Test Alert');
+  }, [tasks, fireReminder]);
+
+  // Background reminder scheduler loop: checks every 10 seconds
+  useEffect(() => {
+    const checkReminders = () => {
+      const now = new Date();
+      const nowTs = now.getTime();
+
+      tasks.forEach((t) => {
+        if (t.status === 'completed' || t.status === 'trash' || t.status === 'wont_do') return;
+        if (!t.dueDate) return;
+
+        const timePart = t.startTime ? `${t.startTime}:00` : '09:00:00';
+        const targetDateTime = parseISO(`${t.dueDate}T${timePart}`);
+        if (isNaN(targetDateTime.getTime())) return;
+
+        const targetTs = targetDateTime.getTime();
+        const reminderOffsets =
+          t.reminders && t.reminders.length > 0 ? t.reminders : t.startTime ? ['On time'] : [];
+
+        reminderOffsets.forEach((rem) => {
+          let offsetMinutes = 0;
+          if (rem === '5m before') offsetMinutes = -5;
+          else if (rem === '15m before') offsetMinutes = -15;
+          else if (rem === '30m before') offsetMinutes = -30;
+          else if (rem === '1h before') offsetMinutes = -60;
+          else if (rem === '1d before') offsetMinutes = -1440;
+          else if (rem === 'On time') offsetMinutes = 0;
+
+          const triggerTs = targetTs + offsetMinutes * 60 * 1000;
+          const diffSeconds = (nowTs - triggerTs) / 1000;
+          const key = `${t.id}-${rem}-${t.dueDate}-${t.startTime || 'allDay'}`;
+
+          // Trigger if within a 55-second window and not yet fired in this cycle
+          if (diffSeconds >= 0 && diffSeconds <= 55 && !firedRemindersRef.current.has(key)) {
+            firedRemindersRef.current.add(key);
+            fireReminder(t, rem);
+          }
+        });
+      });
+    };
+
+    const interval = window.setInterval(checkReminders, 10000);
+    checkReminders();
+    return () => window.clearInterval(interval);
+  }, [tasks, fireReminder]);
+
+  // Re-alert for Constant Reminders every 25 seconds until handled
+  useEffect(() => {
+    if (!activeReminder?.isConstant) return;
+    const repeatInterval = window.setInterval(() => {
+      if (preferences.soundAlertEnabled) {
+        soundEngine.playReminderAlarm();
+      }
+    }, 25000);
+    return () => window.clearInterval(repeatInterval);
+  }, [activeReminder, preferences.soundAlertEnabled]);
 
   // Pomodoro & Stopwatch global timer state
   const [pomoMode, setPomoMode] = useState<'pomo' | 'stopwatch'>('pomo');
@@ -1866,6 +2012,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setTheme,
       resetDemoWorkspace,
       clearAllWorkspaceData,
+      activeReminder,
+      dismissActiveReminder,
+      snoozeActiveReminder,
+      triggerTaskReminderNow,
+      requestNotificationPermission,
+      notificationPermission,
       supabaseStatus,
       supabaseUserEmail,
       supabaseLastSyncedAt,
@@ -1908,6 +2060,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       whiteNoiseVolume,
       rightPaneWidth,
       setRightPaneWidth,
+      activeReminder,
+      notificationPermission,
       supabaseStatus,
       supabaseUserEmail,
       supabaseLastSyncedAt,
