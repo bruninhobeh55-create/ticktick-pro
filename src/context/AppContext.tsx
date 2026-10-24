@@ -1194,6 +1194,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   interface CloudWorkspaceSnapshot {
     deviceId: string;
     updatedAt: number;
+    userName?: string;
+    preferences?: Partial<UserPreferences>;
     tasks: Task[];
     lists: TaskList[];
     folders: Folder[];
@@ -1215,6 +1217,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return {
         deviceId: deviceIdRef.current,
         updatedAt: ts,
+        userName: preferences.fullName,
+        preferences: {
+          fullName: preferences.fullName,
+          email: preferences.email,
+          theme: preferences.theme,
+          achievementScore: preferences.achievementScore,
+        },
         tasks,
         lists,
         folders,
@@ -1224,7 +1233,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         countdowns,
       };
     },
-    [tasks, lists, folders, sections, tags, habits, countdowns]
+    [tasks, lists, folders, sections, tags, habits, countdowns, preferences]
   );
 
   const buildSnapshotRef = useRef(buildSnapshot);
@@ -1252,6 +1261,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (Array.isArray(snap.habits)) setHabits(snap.habits);
       if (Array.isArray(snap.countdowns)) {
         setCountdowns(snap.countdowns);
+      }
+      if (snap.preferences?.fullName) {
+        setPreferences((prev) => ({
+          ...prev,
+          fullName: snap.preferences?.fullName || prev.fullName,
+          email: snap.preferences?.email || prev.email,
+        }));
+      } else if (snap.userName) {
+        setPreferences((prev) => ({ ...prev, fullName: snap.userName || prev.fullName }));
       }
 
       const syncedTime = format(new Date(), 'HH:mm:ss');
@@ -1396,16 +1414,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
         setSupabaseLastSyncedAt(format(new Date(), 'HH:mm:ss'));
         // Also persist to PostgreSQL ticktick_workspace table if available
-        await client
-          .from('ticktick_workspace')
-          .upsert({ id: 'default', payload: snap, updated_at: new Date().toISOString() });
+        try {
+          await client
+            .from('ticktick_workspace')
+            .upsert({ id: 'default', name: preferences.fullName, payload: snap, updated_at: new Date().toISOString() });
+        } catch {
+          await client
+            .from('ticktick_workspace')
+            .upsert({ id: 'default', payload: snap, updated_at: new Date().toISOString() });
+        }
+
+        // Also persist user profile name to profiles table if it exists
+        try {
+          await client.from('profiles').upsert({
+            id: 'default',
+            name: preferences.fullName,
+            full_name: preferences.fullName,
+            email: preferences.email,
+            updated_at: new Date().toISOString(),
+          });
+        } catch {
+          // Ignore if table does not exist
+        }
       } catch {
         // Ignore if optional PostgreSQL table is not created yet; Realtime sync is active
       }
     }, 180);
 
     return () => clearTimeout(timer);
-  }, [tasks, lists, folders, sections, tags, habits, countdowns, buildSnapshot]);
+  }, [tasks, lists, folders, sections, tags, habits, countdowns, preferences, buildSnapshot]);
 
   const connectSupabase = async (url: string, anonKey: string): Promise<boolean> => {
     saveRuntimeSupabaseConfig(url, anonKey);
@@ -1486,13 +1523,85 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ]);
       }
 
-      // Attempt optional PostgreSQL table persistence (ticktick_workspace & tasks) without failing if tables are not created yet
+      // Attempt optional PostgreSQL table persistence (ticktick_workspace, profiles, tasks, lists)
       let dbPersisted = false;
-      const wsRes = await client
-        .from('ticktick_workspace')
-        .upsert({ id: 'default', payload: snap, updated_at: new Date().toISOString() });
-      if (!wsRes.error) {
-        dbPersisted = true;
+      try {
+        const wsWithCol = await client
+          .from('ticktick_workspace')
+          .upsert({ id: 'default', name: preferences.fullName, payload: snap, updated_at: new Date().toISOString() });
+        if (!wsWithCol.error) {
+          dbPersisted = true;
+        } else {
+          const wsFallback = await client
+            .from('ticktick_workspace')
+            .upsert({ id: 'default', payload: snap, updated_at: new Date().toISOString() });
+          if (!wsFallback.error) dbPersisted = true;
+        }
+      } catch {
+        // ignore
+      }
+
+      // Also persist to profiles table (display name & email)
+      try {
+        await client.from('profiles').upsert({
+          id: 'default',
+          name: preferences.fullName,
+          full_name: preferences.fullName,
+          email: preferences.email,
+          updated_at: new Date().toISOString(),
+        });
+      } catch {
+        // ignore if table doesn't exist
+      }
+
+      // Also persist individual tasks (with both name and title)
+      try {
+        if (tasks.length > 0) {
+          const taskRows = tasks.map((t) => ({
+            id: t.id,
+            name: t.title,
+            title: t.title,
+            content: t.content,
+            status: t.status,
+            priority: t.priority,
+            due_date: t.dueDate,
+            list_id: t.listId,
+            updated_at: new Date().toISOString(),
+          }));
+          const tRes = await client.from('tasks').upsert(taskRows);
+          if (tRes.error && tRes.error.message.includes('name')) {
+            await client.from('tasks').upsert(
+              tasks.map((t) => ({
+                id: t.id,
+                title: t.title,
+                content: t.content,
+                status: t.status,
+                priority: t.priority,
+                due_date: t.dueDate,
+                list_id: t.listId,
+                updated_at: new Date().toISOString(),
+              }))
+            );
+          }
+        }
+      } catch {
+        // ignore if table doesn't exist
+      }
+
+      // Also persist lists
+      try {
+        if (lists.length > 0) {
+          await client.from('lists').upsert(
+            lists.map((l) => ({
+              id: l.id,
+              name: l.name,
+              color: l.color,
+              emoji: l.emoji || '',
+            }))
+          );
+        }
+      } catch {
+        // ignore if table doesn't exist
       }
 
       const syncedTime = format(new Date(), 'HH:mm:ss');
@@ -1500,13 +1609,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setSupabaseStatus('connected');
       pushToast({
         title: 'Pushed to Supabase Cloud',
-        description: `${tasks.length} tasks, ${lists.length} lists & ${habits.length} habits synced`,
+        description: `Name "${preferences.fullName}", ${tasks.length} tasks & ${lists.length} lists synced`,
         kind: 'success',
       });
 
       return {
         ok: true,
-        message: `Pushed ${tasks.length} tasks, ${lists.length} lists & ${habits.length} habits to Supabase Cloud at ${syncedTime}${dbPersisted ? ' (PostgreSQL + Realtime)' : ' (Live Realtime Sync active)'}.`,
+        message: `Pushed display name "${preferences.fullName}", ${tasks.length} tasks, ${lists.length} lists & ${habits.length} habits to Supabase Cloud at ${syncedTime}${dbPersisted ? ' (PostgreSQL + Realtime)' : ' (Live Realtime Sync active)'}.`,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Sync failed';
@@ -1531,16 +1640,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // 1. Check PostgreSQL ticktick_workspace table if created
       const wsQuery = await client
         .from('ticktick_workspace')
-        .select('payload, updated_at')
+        .select('*')
         .eq('id', 'default')
         .maybeSingle();
 
-      if (!wsQuery.error && wsQuery.data?.payload) {
-        const dbSnap = wsQuery.data.payload as CloudWorkspaceSnapshot;
-        if (dbSnap && Array.isArray(dbSnap.tasks)) {
-          bestSnapshot = dbSnap;
-          sourceLabel = 'Supabase PostgreSQL';
+      if (!wsQuery.error && wsQuery.data) {
+        if (wsQuery.data.payload) {
+          const dbSnap = wsQuery.data.payload as CloudWorkspaceSnapshot;
+          if (dbSnap && Array.isArray(dbSnap.tasks)) {
+            bestSnapshot = dbSnap;
+            sourceLabel = 'Supabase PostgreSQL';
+          }
         }
+        if (wsQuery.data.name) {
+          updatePreferences({ fullName: String(wsQuery.data.name) });
+        }
+      }
+
+      // Check profiles table for user display name
+      try {
+        const profRes = await client.from('profiles').select('*').eq('id', 'default').maybeSingle();
+        if (!profRes.error && profRes.data) {
+          const pName = profRes.data.full_name || profRes.data.name;
+          if (pName) updatePreferences({ fullName: String(pName) });
+        }
+      } catch {
+        // ignore
       }
 
       // 2. Check PostgreSQL tasks table if created
@@ -1554,7 +1679,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const mapped: Task[] = tasksQuery.data.map(
             (row: Record<string, unknown>, idx: number) => ({
               id: String(row.id),
-              title: String(row.title || 'Untitled'),
+              title: String(row.name || row.title || 'Untitled'),
               content: String(row.content || ''),
               isNote: Boolean(row.is_note),
               listId: String(row.list_id || 'inbox'),

@@ -131,6 +131,9 @@ export const SettingsAndSupabaseModal: React.FC = () => {
                     onChange={(e) => updatePreferences({ fullName: e.target.value })}
                     className="w-full px-3 py-2 text-xs rounded-lg border border-zinc-300 focus:outline-none focus:border-zinc-900"
                   />
+                  <span className="text-[10px] text-zinc-400 mt-0.5 block">
+                    Syncs to Supabase database & across devices in real time.
+                  </span>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">
@@ -264,29 +267,87 @@ export const SettingsAndSupabaseModal: React.FC = () => {
                 </p>
               </div>
 
-              <div className="p-3 rounded-xl bg-zinc-50 border border-zinc-200/80 space-y-2">
+              <div className="p-3.5 rounded-xl bg-zinc-50 border border-zinc-200/80 space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold text-zinc-700">
-                    Optional PostgreSQL Persistence Table (No Auth / RLS Required)
-                  </span>
+                  <div>
+                    <span className="text-xs font-semibold text-zinc-800 block">
+                      Supabase PostgreSQL Schema (Syncs User Name, Tasks, Lists & Workspace)
+                    </span>
+                    <span className="text-[11px] text-zinc-500">
+                      Copy and run this in your Supabase SQL Editor so your name, tasks, and lists persist to individual tables:
+                    </span>
+                  </div>
                   <button
                     type="button"
                     onClick={() => {
                       navigator.clipboard?.writeText(
-                        `CREATE TABLE IF NOT EXISTS public.ticktick_workspace (\n  id TEXT PRIMARY KEY,\n  payload JSONB NOT NULL,\n  updated_at TIMESTAMPTZ DEFAULT NOW()\n);\nALTER TABLE public.ticktick_workspace DISABLE ROW LEVEL SECURITY;\nGRANT ALL ON TABLE public.ticktick_workspace TO anon, authenticated, service_role;`
+`-- 1. Workspace Table (stores full workspace state and user name)
+CREATE TABLE IF NOT EXISTS public.ticktick_workspace (
+  id TEXT PRIMARY KEY,
+  name TEXT,
+  payload JSONB NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE public.ticktick_workspace DISABLE ROW LEVEL SECURITY;
+GRANT ALL ON TABLE public.ticktick_workspace TO anon, authenticated, service_role;
+
+-- 2. User Profiles Table (syncs user display name)
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id TEXT PRIMARY KEY,
+  name TEXT,
+  full_name TEXT,
+  email TEXT,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE public.profiles DISABLE ROW LEVEL SECURITY;
+GRANT ALL ON TABLE public.profiles TO anon, authenticated, service_role;
+
+-- 3. Tasks Table (syncs task name, status, priority, due date)
+CREATE TABLE IF NOT EXISTS public.tasks (
+  id TEXT PRIMARY KEY,
+  name TEXT,
+  title TEXT,
+  content TEXT,
+  status TEXT DEFAULT 'todo',
+  priority INT DEFAULT 0,
+  due_date TEXT,
+  list_id TEXT,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE public.tasks DISABLE ROW LEVEL SECURITY;
+GRANT ALL ON TABLE public.tasks TO anon, authenticated, service_role;
+
+-- 4. Lists Table (syncs list names)
+CREATE TABLE IF NOT EXISTS public.lists (
+  id TEXT PRIMARY KEY,
+  name TEXT,
+  color TEXT,
+  emoji TEXT
+);
+ALTER TABLE public.lists DISABLE ROW LEVEL SECURITY;
+GRANT ALL ON TABLE public.lists TO anon, authenticated, service_role;`
                       );
-                      setSyncMessage('Copied PostgreSQL table setup SQL to clipboard.');
+                      setSyncMessage('Copied Complete PostgreSQL Schema SQL to clipboard!');
                     }}
-                    className="px-2 py-1 rounded-md bg-zinc-900 text-white text-[10px] font-semibold hover:bg-zinc-800"
+                    className="px-2.5 py-1.5 rounded-md bg-zinc-900 text-white text-[11px] font-semibold hover:bg-zinc-800 shrink-0"
                   >
-                    Copy Setup SQL
+                    Copy Complete Schema SQL
                   </button>
                 </div>
-                <pre className="text-[10px] font-mono text-zinc-600 bg-white p-2 rounded-lg border border-zinc-200/70 overflow-x-auto">
-{`CREATE TABLE IF NOT EXISTS public.ticktick_workspace (
-  id TEXT PRIMARY KEY, payload JSONB NOT NULL, updated_at TIMESTAMPTZ DEFAULT NOW()
+                <pre className="text-[10px] font-mono text-zinc-700 bg-white p-2.5 rounded-lg border border-zinc-200/70 overflow-x-auto leading-relaxed">
+{`-- Creates ticktick_workspace, profiles (name), tasks (name/title) & lists:
+CREATE TABLE IF NOT EXISTS public.ticktick_workspace (
+  id TEXT PRIMARY KEY, name TEXT, payload JSONB NOT NULL, updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-ALTER TABLE public.ticktick_workspace DISABLE ROW LEVEL SECURITY;`}
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id TEXT PRIMARY KEY, name TEXT, full_name TEXT, email TEXT, updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS public.tasks (
+  id TEXT PRIMARY KEY, name TEXT, title TEXT, content TEXT, status TEXT, due_date TEXT
+);
+ALTER TABLE public.ticktick_workspace DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.profiles DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tasks DISABLE ROW LEVEL SECURITY;`}
                 </pre>
               </div>
 
