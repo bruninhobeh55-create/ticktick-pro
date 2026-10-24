@@ -40,6 +40,10 @@ import {
   ViewMode,
 } from '../types';
 import { soundEngine, WhiteNoiseId } from '../utils/soundEngine';
+import {
+  requestDeviceNotificationPermission,
+  sendDeviceNotification,
+} from '../utils/notificationEngine';
 
 const STORAGE_PREFIX = 'ticktick_pro_v2_';
 
@@ -337,63 +341,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const firedRemindersRef = useRef<Set<string>>(new Set());
 
   const requestNotificationPermission = useCallback(async (): Promise<boolean> => {
-    if (typeof window === 'undefined' || !('Notification' in window)) return false;
-    try {
-      const res = await Notification.requestPermission();
-      setNotificationPermission(res);
-      if (res === 'granted') {
-        pushToast({
-          title: 'Notifications Enabled',
-          description: 'You will receive desktop & mobile alerts when task reminders arrive',
-          kind: 'success',
-        });
-        return true;
-      }
-      return false;
-    } catch {
+    const outcome = await requestDeviceNotificationPermission();
+    setNotificationPermission(outcome.status);
+    if (outcome.granted) {
+      pushToast({
+        title: 'Notifications Enabled',
+        description: 'You will receive desktop & mobile alerts when task reminders arrive',
+        kind: 'success',
+      });
+      return true;
+    } else {
+      pushToast({
+        title: 'Notification Alert',
+        description: outcome.message,
+        kind: 'info',
+      });
       return false;
     }
   }, [pushToast]);
 
   const fireReminder = useCallback((task: Task, label: string) => {
-    // 1. Play audio alert chime
-    if (preferences.soundAlertEnabled) {
-      soundEngine.playReminderAlarm();
-    }
+    // 1. Dispatch cross-platform native notification (handles SW, Window, vibration & chime)
+    sendDeviceNotification(`TickTick Alert: ${task.title}`, {
+      body: `${label} • Due ${task.dueDate || 'Today'} ${task.startTime || ''}`.trim(),
+      icon: './icon-192.png',
+      tag: `reminder-${task.id}`,
+      playSound: preferences.soundAlertEnabled,
+    });
 
-    // 2. Dispatch native OS desktop & mobile notification if permitted
-    if (
-      typeof window !== 'undefined' &&
-      'Notification' in window &&
-      Notification.permission === 'granted'
-    ) {
-      const title = `TickTick Alert: ${task.title}`;
-      const options: NotificationOptions = {
-        body: `${label} • Due ${task.dueDate || 'Today'} ${task.startTime || ''}`.trim(),
-        icon: './icon-192.png',
-        badge: './icon-192.png',
-        tag: `reminder-${task.id}`,
-      };
-
-      // Mobile Chrome / Android requires ServiceWorkerRegistration.showNotification()
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.ready
-          .then((registration) => {
-            return registration.showNotification(title, options);
-          })
-          .catch(() => {
-            try {
-              new Notification(title, options);
-            } catch {}
-          });
-      } else {
-        try {
-          new Notification(title, options);
-        } catch {}
-      }
-    }
-
-    // 3. Set in-app active reminder modal
+    // 2. Set in-app active reminder modal
     setActiveReminder({
       task,
       reminderLabel: label,

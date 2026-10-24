@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  AlertCircle,
   Bell,
   Check,
   Cloud,
@@ -7,6 +8,7 @@ import {
   Database,
   Download,
   DownloadCloud,
+  Info,
   Keyboard,
   Palette,
   RefreshCw,
@@ -18,7 +20,11 @@ import {
 import { useApp } from '../context/AppContext';
 import { getSupabaseConfig } from '../lib/supabase';
 import { ThemeId } from '../types';
-import { soundEngine } from '../utils/soundEngine';
+import {
+  checkNotificationDiagnostic,
+  NotificationDiagnostic,
+  sendDeviceNotification,
+} from '../utils/notificationEngine';
 
 export const SettingsAndSupabaseModal: React.FC = () => {
   const {
@@ -48,6 +54,13 @@ export const SettingsAndSupabaseModal: React.FC = () => {
   const [sbUrl, setSbUrl] = useState(currentCfg.url);
   const [sbAnonKey, setSbAnonKey] = useState(currentCfg.anonKey);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [notifDiag, setNotifDiag] = useState<NotificationDiagnostic | null>(null);
+
+  useEffect(() => {
+    if (isSettingsOpen) {
+      checkNotificationDiagnostic().then(setNotifDiag);
+    }
+  }, [isSettingsOpen, notificationPermission]);
 
   if (!isSettingsOpen) return null;
 
@@ -172,58 +185,95 @@ export const SettingsAndSupabaseModal: React.FC = () => {
               </div>
 
               {/* Mobile & Desktop Push Notifications Card */}
-              <div className="flex items-center justify-between p-3.5 rounded-xl bg-zinc-50 border border-zinc-200/80 gap-3">
-                <div>
-                  <div className="text-xs font-semibold text-zinc-800 flex items-center gap-1.5">
-                    <Bell className="w-3.5 h-3.5 text-blue-600" />
-                    Mobile & Desktop Push Notifications
+              <div className="p-3.5 rounded-xl bg-zinc-50 border border-zinc-200/80 space-y-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-semibold text-zinc-800 flex items-center gap-1.5">
+                      <Bell className="w-3.5 h-3.5 text-blue-600" />
+                      Mobile & Desktop Notifications
+                      {notificationPermission === 'granted' && (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                          Active
+                        </span>
+                      )}
+                      {notificationPermission === 'denied' && (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200/60">
+                          Blocked
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-zinc-500 mt-0.5">
+                      {notificationPermission === 'granted'
+                        ? 'Lock screen, status bar, and audio chimes are enabled'
+                        : notificationPermission === 'denied'
+                          ? 'Notifications are blocked in your phone/browser settings'
+                          : 'Permission required to alert you when task reminders arrive'}
+                    </div>
                   </div>
-                  <div className="text-[11px] text-zinc-500">
-                    {notificationPermission === 'granted'
-                      ? 'Alerts active • Native lock screen & notification shade banners enabled'
-                      : notificationPermission === 'denied'
-                        ? 'Notifications blocked in browser permissions'
-                        : 'Allow notifications to receive real-time task alerts on this device'}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  {notificationPermission !== 'granted' ? (
-                    <button
-                      type="button"
-                      onClick={requestNotificationPermission}
-                      className="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold"
-                    >
-                      Enable Alerts
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        soundEngine.playReminderAlarm();
-                        const title = 'TickTick Pro Mobile Alert 🔔';
-                        const options: NotificationOptions = {
-                          body: 'Test notification working! Your task reminders will alert on this phone.',
-                          icon: './icon-192.png',
-                          badge: './icon-192.png',
-                          tag: 'test-alert',
-                        };
-                        if ('serviceWorker' in navigator) {
-                          navigator.serviceWorker.ready.then((reg) => {
-                            reg.showNotification(title, options);
-                          }).catch(() => {
-                            try { new Notification(title, options); } catch {}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {notificationPermission !== 'granted' ? (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await requestNotificationPermission();
+                          checkNotificationDiagnostic().then(setNotifDiag);
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-colors"
+                      >
+                        Enable Alerts
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const result = await sendDeviceNotification('TickTick Pro Mobile Alert 🔔', {
+                            body: 'Test notification working! Your task reminders will alert on this device.',
+                            icon: './icon-192.png',
+                            playSound: true,
                           });
-                        } else {
-                          try { new Notification(title, options); } catch {}
-                        }
-                        pushToast({ title: 'Test alert dispatched to this device', kind: 'success' });
-                      }}
-                      className="px-2.5 py-1.5 rounded-lg bg-zinc-200 hover:bg-zinc-300 text-zinc-800 text-xs font-semibold"
-                    >
-                      Test Alert
-                    </button>
-                  )}
+                          if (result.success) {
+                            pushToast({
+                              title: 'Test Alert Sent! 🔔',
+                              description: 'Notification banner and audio chime dispatched to your device.',
+                              kind: 'success',
+                            });
+                          } else {
+                            pushToast({
+                              title: 'Notice',
+                              description: result.message,
+                              kind: 'info',
+                            });
+                          }
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-zinc-200 hover:bg-zinc-300 text-zinc-800 text-xs font-semibold transition-colors"
+                      >
+                        Test Alert
+                      </button>
+                    )}
+                  </div>
                 </div>
+
+                {/* iPhone / iOS Safari tab notice */}
+                {notifDiag?.isIOS && !notifDiag?.isStandalone && (
+                  <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200/70 text-amber-900 text-[11px] leading-relaxed">
+                    <Info className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="font-semibold block text-amber-950">iPhone Safari Requirement:</strong>
+                      Apple blocks web notifications in regular Safari browser tabs. To receive alerts on iPhone, tap Safari's <strong>Share (⎋)</strong> ➔ <strong>Add to Home Screen</strong>, then open TickTick Pro from your home screen.
+                    </div>
+                  </div>
+                )}
+
+                {/* Blocked in browser notice */}
+                {notificationPermission === 'denied' && (
+                  <div className="flex items-start gap-2 p-2.5 rounded-lg bg-rose-50 border border-rose-200/70 text-rose-900 text-[11px] leading-relaxed">
+                    <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="font-semibold block text-rose-950">How to Unblock on Phone:</strong>
+                      Tap the tune/lock icon in your browser URL bar ➔ <strong>Permissions / Site settings</strong> ➔ Set <strong>Notifications</strong> to <strong>Allow</strong>, then refresh.
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-between p-3.5 rounded-xl bg-blue-50/70 border border-blue-200/80 gap-3">
