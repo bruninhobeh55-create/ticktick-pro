@@ -481,7 +481,7 @@ export const TaskSidebar: React.FC = () => {
 
       <aside
         aria-label="Lists, Tags, and Filters"
-        className="fixed inset-y-0 left-0 z-40 w-[276px] max-w-[84vw] pb-16 md:pb-0 md:static md:z-auto md:w-60 shrink-0 bg-zinc-50 border-r border-zinc-200/80 flex flex-col h-full select-none overflow-y-auto shadow-2xl md:shadow-none animate-drawer-left md:[animation:none]"
+        className="fixed inset-y-0 left-0 z-40 w-[280px] max-w-[85vw] pb-[calc(5rem+env(safe-area-inset-bottom,0px))] md:pb-0 md:static md:z-auto md:w-60 shrink-0 bg-zinc-50 border-r border-zinc-200/80 flex flex-col h-full select-none overflow-y-auto shadow-2xl md:shadow-none animate-drawer-left md:[animation:none]"
       >
         {/* Mobile Drawer Header */}
         <div className="md:hidden flex items-center justify-between px-3.5 pt-3 pb-2 border-b border-zinc-200/70">

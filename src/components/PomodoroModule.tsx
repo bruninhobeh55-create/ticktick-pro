@@ -10,6 +10,7 @@ import {
   RotateCcw,
   Search,
   Settings2,
+  Timer,
   Trash2,
   Volume2,
 } from 'lucide-react';
@@ -50,6 +51,7 @@ export const PomodoroModule: React.FC = () => {
   const [manualMinutes, setManualMinutes] = useState(25);
   const [manualNote, setManualNote] = useState('');
   const [showPomoSettings, setShowPomoSettings] = useState(false);
+  const [mobileTab, setMobileTab] = useState<'timer' | 'history'>('timer');
 
   // Focus Log Filter States
   const [logRangeFilter, setLogRangeFilter] = useState<'all' | 'today' | '7days'>('all');
@@ -103,8 +105,42 @@ export const PomodoroModule: React.FC = () => {
 
   return (
     <div className="flex-1 flex flex-col lg:flex-row h-full bg-zinc-50/70 overflow-y-auto">
+      {/* Mobile Top Segmented Tab Switcher */}
+      <div className="lg:hidden px-3 pt-3 pb-2 shrink-0 bg-white/70 backdrop-blur-xs border-b border-zinc-200/80">
+        <div className="grid grid-cols-2 bg-zinc-100 p-0.5 rounded-xl border border-zinc-200/70 text-xs font-semibold">
+          <button
+            type="button"
+            onClick={() => setMobileTab('timer')}
+            className={`py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5 ${
+              mobileTab === 'timer'
+                ? 'bg-white text-zinc-950 shadow-2xs font-semibold'
+                : 'text-zinc-500 hover:text-zinc-900'
+            }`}
+          >
+            <Timer className="w-3.5 h-3.5" />
+            <span>Focus Timer</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileTab('history')}
+            className={`py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5 ${
+              mobileTab === 'history'
+                ? 'bg-white text-zinc-950 shadow-2xs font-semibold'
+                : 'text-zinc-500 hover:text-zinc-900'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5" />
+            <span>Records & Stats ({pomodoroSessions.length})</span>
+          </button>
+        </div>
+      </div>
+
       {/* Left / Center: Interactive Focus Timer & White Noise Studio */}
-      <div className="flex-1 p-4 sm:p-6 flex flex-col items-center justify-center">
+      <div
+        className={`flex-1 p-3.5 sm:p-6 flex-col items-center justify-start lg:justify-center ${
+          mobileTab === 'timer' ? 'flex' : 'hidden lg:flex'
+        }`}
+      >
         <div className="w-full max-w-md surface-card rounded-2xl p-4 sm:p-6 flex flex-col items-center space-y-4 sm:space-y-5">
           {/* Mode Switcher: Pomo vs Stopwatch + Timer Settings */}
           <div className="w-full flex items-center justify-between">
@@ -320,7 +356,11 @@ export const PomodoroModule: React.FC = () => {
       </div>
 
       {/* Right Column: Focus Statistics & Record History */}
-      <div className="w-full lg:w-[420px] border-t lg:border-t-0 lg:border-l border-zinc-200/80 bg-white p-4 sm:p-6 flex flex-col space-y-5 sm:space-y-6 shrink-0">
+      <div
+        className={`w-full lg:w-[420px] border-t lg:border-t-0 lg:border-l border-zinc-200/80 bg-white p-4 sm:p-6 flex-col space-y-5 sm:space-y-6 shrink-0 ${
+          mobileTab === 'history' ? 'flex' : 'hidden lg:flex'
+        }`}
+      >
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-sm font-semibold text-zinc-900 tracking-tight">

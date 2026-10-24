@@ -245,10 +245,10 @@ export const NavigationRail: React.FC = () => {
         </div>
       </aside>
 
-      {/* Mobile Bottom Navigation Bar (<768px) */}
+      {/* Mobile Bottom Navigation Bar (<768px) with native safe-area inset */}
       <nav
         aria-label="Mobile Bottom Navigation"
-        className="md:hidden fixed bottom-0 inset-x-0 z-30 h-14 bg-white/95 backdrop-blur-md border-t border-zinc-200/80 grid grid-cols-5 items-center px-1 select-none pb-[env(safe-area-inset-bottom)]"
+        className="md:hidden fixed bottom-0 inset-x-0 z-30 min-h-[3.5rem] bg-white/95 backdrop-blur-md border-t border-zinc-200/80 grid grid-cols-5 items-center px-1 select-none pb-[env(safe-area-inset-bottom,0px)]"
       >
         {primaryMobileItems.map((item) => {
           const isActive = activeModule === item.id;
@@ -261,8 +261,8 @@ export const NavigationRail: React.FC = () => {
               }}
               aria-label={item.label}
               aria-current={isActive ? 'page' : undefined}
-              className={`relative flex flex-col items-center justify-center h-12 rounded-lg gap-0.5 ${
-                isActive ? 'text-zinc-900 font-semibold' : 'text-zinc-400 hover:text-zinc-700'
+              className={`relative flex flex-col items-center justify-center py-1.5 rounded-lg gap-0.5 tactile-press ${
+                isActive ? 'text-zinc-950 font-semibold' : 'text-zinc-400 hover:text-zinc-700'
               }`}
             >
               <div className="relative">
@@ -280,6 +280,9 @@ export const NavigationRail: React.FC = () => {
                 )}
               </div>
               <span className="text-[10px] tracking-tight">{item.shortLabel}</span>
+              {isActive && (
+                <span className="absolute bottom-0 w-4 h-0.5 bg-zinc-950 rounded-full" />
+              )}
             </button>
           );
         })}
@@ -288,14 +291,17 @@ export const NavigationRail: React.FC = () => {
         <button
           onClick={() => setMobileMoreOpen((v) => !v)}
           aria-label="More Modules and Settings"
-          className={`relative flex flex-col items-center justify-center h-12 rounded-lg gap-0.5 ${
+          className={`relative flex flex-col items-center justify-center py-1.5 rounded-lg gap-0.5 tactile-press ${
             isOverflowActive || mobileMoreOpen
-              ? 'text-zinc-900 font-semibold'
+              ? 'text-zinc-950 font-semibold'
               : 'text-zinc-400 hover:text-zinc-700'
           }`}
         >
           <MoreHorizontal className="w-[18px] h-[18px]" strokeWidth={1.75} />
           <span className="text-[10px] tracking-tight">More</span>
+          {(isOverflowActive || mobileMoreOpen) && (
+            <span className="absolute bottom-0 w-4 h-0.5 bg-zinc-950 rounded-full" />
+          )}
         </button>
       </nav>
 
@@ -307,7 +313,7 @@ export const NavigationRail: React.FC = () => {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full bg-white rounded-t-2xl border-t border-zinc-200/80 p-4 pb-20 space-y-4 animate-sheet-up"
+            className="w-full bg-white rounded-t-2xl border-t border-zinc-200/80 p-4 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] space-y-4 animate-sheet-up max-h-[85vh] overflow-y-auto"
           >
             {/* Vaul Drag Handle Pill */}
             <div className="w-10 h-1 rounded-full bg-zinc-300 mx-auto" />

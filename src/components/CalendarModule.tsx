@@ -258,7 +258,38 @@ export const CalendarModule: React.FC = () => {
                           <Plus className="w-3 h-3 text-zinc-300 opacity-0 hover:opacity-100" strokeWidth={1.75} />
                         </div>
 
-                        <div className="space-y-1 overflow-y-auto max-h-28">
+                        {/* Mobile Clean Dots (<640px) */}
+                        <div className="sm:hidden flex items-center justify-center gap-0.5 mt-0.5">
+                          {dayEvents.slice(0, 2).map((ev) => (
+                            <span
+                              key={ev.id}
+                              className="w-1.5 h-1.5 rounded-full shrink-0"
+                              style={{ backgroundColor: ev.color }}
+                            />
+                          ))}
+                          {dayTasks.slice(0, 2).map((task) => (
+                            <span
+                              key={task.id}
+                              className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                task.status === 'completed'
+                                  ? 'bg-zinc-300'
+                                  : task.priority === 5
+                                    ? 'bg-rose-500'
+                                    : task.priority === 3
+                                      ? 'bg-amber-500'
+                                      : 'bg-blue-600'
+                              }`}
+                            />
+                          ))}
+                          {dayTasks.length + dayEvents.length > 4 && (
+                            <span className="text-[8px] font-mono-num text-zinc-400 leading-none">
+                              +
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Tablet/Desktop Full Event & Task Pills (sm and up) */}
+                        <div className="hidden sm:block space-y-1 overflow-y-auto max-h-28">
                           {dayEvents.map((ev) => (
                             <div
                               key={ev.id}

@@ -25,8 +25,8 @@ const MainShell: React.FC = () => {
       {/* Desktop Far-Left Icon Rail + Mobile Bottom Tab Bar */}
       <NavigationRail />
 
-      {/* Center + Right Module Switcher (padded on mobile for bottom tab bar) */}
-      <div className="flex-1 flex h-full min-w-0 min-h-0 overflow-hidden pb-14 md:pb-0">
+      {/* Center + Right Module Switcher (padded on mobile for bottom tab bar with safe-area) */}
+      <div className="flex-1 flex h-full min-w-0 min-h-0 overflow-hidden pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))] md:pb-0">
         {activeModule === 'tasks' && (
           <div className="flex-1 flex h-full min-w-0 overflow-hidden relative">
             <TaskSidebar />

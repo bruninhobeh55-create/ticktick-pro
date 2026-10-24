@@ -43,6 +43,7 @@ export const HabitTrackerModule: React.FC = () => {
   // Habit Log Filter State
   const [habitLogRange, setHabitLogRange] = useState<'all' | '7days' | '30days'>('all');
   const [habitMoodFilter, setHabitMoodFilter] = useState<'all' | 'great' | 'good' | 'neutral' | 'tired'>('all');
+  const [mobileHabitView, setMobileHabitView] = useState<'today' | 'matrix'>('today');
   const [isResizing, setIsResizing] = useState(false);
 
   const handleMouseDownResize = (e: React.MouseEvent) => {
@@ -175,8 +176,136 @@ export const HabitTrackerModule: React.FC = () => {
           </button>
         </div>
 
+        {/* Mobile View Switcher (<768px): Today's Fast Check-in vs 7-Day Matrix */}
+        <div className="md:hidden grid grid-cols-2 bg-zinc-100 p-0.5 rounded-xl border border-zinc-200/70 text-xs font-semibold">
+          <button
+            type="button"
+            onClick={() => setMobileHabitView('today')}
+            className={`py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5 ${
+              mobileHabitView === 'today'
+                ? 'bg-white text-zinc-950 shadow-2xs font-semibold'
+                : 'text-zinc-500 hover:text-zinc-900'
+            }`}
+          >
+            <Check className="w-3.5 h-3.5" />
+            <span>Today's Habits</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileHabitView('matrix')}
+            className={`py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5 ${
+              mobileHabitView === 'matrix'
+                ? 'bg-white text-zinc-950 shadow-2xs font-semibold'
+                : 'text-zinc-500 hover:text-zinc-900'
+            }`}
+          >
+            <span>Weekly View</span>
+          </button>
+        </div>
+
+        {/* Mobile Native Checklist for Today */}
+        {mobileHabitView === 'today' && (
+          <div className="md:hidden space-y-3">
+            {sections.map((sec) => {
+              const secHabits = habits.filter((h) => h.section === sec.id);
+              if (secHabits.length === 0) return null;
+
+              return (
+                <div key={sec.id} className="space-y-1.5">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5 px-1">
+                    <UiIcon name={sec.iconKey} className="w-3 h-3 text-zinc-400" />
+                    {sec.label}
+                  </div>
+                  {secHabits.map((habit) => {
+                    const streak = calculateStreak(habit);
+                    const todayLog = habit.logs[todayStr];
+                    const isCompleted = Boolean(todayLog?.completed);
+                    const isSelected = selectedHabit?.id === habit.id;
+
+                    return (
+                      <div
+                        key={habit.id}
+                        onClick={() => setSelectedHabitId(habit.id)}
+                        className={`surface-card rounded-xl p-3 flex items-center justify-between gap-3 border ${
+                          isSelected ? 'border-zinc-900' : 'border-zinc-200/80'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span
+                            style={{ backgroundColor: `${habit.color}15`, color: habit.color }}
+                            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border border-black/[0.04]"
+                          >
+                            <UiIcon name={habit.icon} className="w-5 h-5" />
+                          </span>
+                          <div className="min-w-0">
+                            <div className="text-xs font-semibold text-zinc-900 truncate flex items-center gap-1.5">
+                              {habit.name}
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-mono-num font-medium text-orange-500">
+                                <Flame className="w-3 h-3 fill-orange-500" />
+                                {streak}d
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-zinc-400 truncate mt-0.5 font-mono-num">
+                              {habit.goalType === 'quantified'
+                                ? `Logged: ${todayLog?.value || 0}/${habit.targetValue} ${habit.unit}`
+                                : habit.quote}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setLogModalTarget({ habitId: habit.id, dateStr: todayStr });
+                            }}
+                            title="Log Reflection"
+                            className="p-2 rounded-lg text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100"
+                          >
+                            <MessageSquarePlus className="w-4 h-4" strokeWidth={1.75} />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleHabitDate(habit.id, todayStr);
+                            }}
+                            style={{
+                              backgroundColor: isCompleted ? habit.color : undefined,
+                              borderColor: isCompleted ? habit.color : undefined,
+                            }}
+                            className={`w-9 h-9 rounded-full border-2 flex items-center justify-center font-bold font-mono-num text-xs tactile-press ${
+                              isCompleted
+                                ? 'text-white shadow-xs'
+                                : 'border-zinc-300 text-zinc-400 hover:border-zinc-400'
+                            }`}
+                          >
+                            {isCompleted ? (
+                              <Check className="w-4 h-4 stroke-[2.75] animate-check" />
+                            ) : habit.goalType === 'quantified' && (todayLog?.value || 0) > 0 ? (
+                              <span className="text-[10px] text-zinc-900 font-semibold">
+                                {Math.round(((todayLog?.value || 0) / habit.targetValue) * 100)}%
+                              </span>
+                            ) : null}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {/* 7-Day Column Header & Matrix (Horizontally scrollable on narrow mobile screens) */}
-        <div className="surface-card rounded-xl overflow-hidden">
+        <div
+          className={`${
+            mobileHabitView === 'matrix' ? 'block' : 'hidden md:block'
+          } surface-card rounded-xl overflow-hidden`}
+        >
           <div className="overflow-x-auto">
             <div className="min-w-[540px]">
               <div className="grid grid-cols-[minmax(170px,1fr)_repeat(7,40px)_64px] items-center bg-zinc-50 px-4 py-2.5 border-b border-zinc-200/80 text-[11px] font-semibold text-zinc-500">

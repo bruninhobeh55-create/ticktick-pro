@@ -780,31 +780,68 @@ export const TaskWorkspace: React.FC = () => {
 
               {/* Quick Priority Picker & Actions */}
               <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
-                {([5, 3, 1] as Priority[]).map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => setQuickPriority(quickPriority === p ? undefined : p)}
-                    title={`Set ${PRIORITY_BADGE[p].label} Priority`}
-                    className={`px-1 sm:px-1.5 py-0.5 rounded text-[10px] font-medium border flex items-center gap-0.5 ${
-                      quickPriority === p
-                        ? PRIORITY_BADGE[p].color
-                        : 'border-transparent text-zinc-400 hover:bg-zinc-200/60 hover:text-zinc-700'
+                {/* Mobile: Single cycling flag button to preserve input width */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!quickPriority) setQuickPriority(5);
+                    else if (quickPriority === 5) setQuickPriority(3);
+                    else if (quickPriority === 3) setQuickPriority(1);
+                    else setQuickPriority(undefined);
+                  }}
+                  title={
+                    quickPriority
+                      ? `Priority: ${PRIORITY_BADGE[quickPriority].label} (Tap to change)`
+                      : 'Set Priority (Tap to cycle)'
+                  }
+                  className={`sm:hidden p-1.5 rounded-md flex items-center justify-center transition-colors ${
+                    quickPriority
+                      ? PRIORITY_BADGE[quickPriority].color
+                      : 'text-zinc-400 hover:text-zinc-700 hover:bg-zinc-200/60'
+                  }`}
+                >
+                  <Flag
+                    className={`w-3.5 h-3.5 ${
+                      quickPriority === 5
+                        ? 'text-rose-500 fill-rose-500'
+                        : quickPriority === 3
+                          ? 'text-amber-500 fill-amber-500'
+                          : quickPriority === 1
+                            ? 'text-blue-500 fill-blue-500'
+                            : 'text-zinc-400'
                     }`}
-                  >
-                    <Flag
-                      className={`w-3 h-3 ${
-                        p === 5
-                          ? 'text-rose-500'
-                          : p === 3
-                            ? 'text-amber-500'
-                            : 'text-blue-500'
+                    strokeWidth={1.75}
+                  />
+                </button>
+
+                {/* Tablet / Desktop: Individual priority flag buttons */}
+                <div className="hidden sm:flex items-center gap-1">
+                  {([5, 3, 1] as Priority[]).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setQuickPriority(quickPriority === p ? undefined : p)}
+                      title={`Set ${PRIORITY_BADGE[p].label} Priority`}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-medium border flex items-center gap-0.5 ${
+                        quickPriority === p
+                          ? PRIORITY_BADGE[p].color
+                          : 'border-transparent text-zinc-400 hover:bg-zinc-200/60 hover:text-zinc-700'
                       }`}
-                      strokeWidth={1.75}
-                    />
-                    <span className="hidden sm:inline">{PRIORITY_BADGE[p].label}</span>
-                  </button>
-                ))}
+                    >
+                      <Flag
+                        className={`w-3 h-3 ${
+                          p === 5
+                            ? 'text-rose-500'
+                            : p === 3
+                              ? 'text-amber-500'
+                              : 'text-blue-500'
+                        }`}
+                        strokeWidth={1.75}
+                      />
+                      <span>{PRIORITY_BADGE[p].label}</span>
+                    </button>
+                  ))}
+                </div>
 
                 {/* Voice Input Button */}
                 <button

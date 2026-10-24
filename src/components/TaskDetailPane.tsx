@@ -232,8 +232,8 @@ export const TaskDetailPane: React.FC = () => {
           </div>
         </div>
 
-        {/* Scrollable Inspector Body */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-5">
+        {/* Scrollable Inspector Body with mobile safe-area */}
+        <div className="flex-1 overflow-y-auto p-4 pb-[calc(2.5rem+env(safe-area-inset-bottom,0px))] space-y-5">
           {/* Title & Focus Pomo Button */}
           <div className="space-y-2.5">
             <input
