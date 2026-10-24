@@ -81,6 +81,8 @@ export const SettingsAndSupabaseModal: React.FC = () => {
           </div>
           <button
             onClick={() => setIsSettingsOpen(false)}
+            title="Close Settings"
+            aria-label="Close Settings"
             className="p-1.5 rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
           >
             <X className="w-4 h-4" strokeWidth={1.75} />
@@ -222,7 +224,7 @@ export const SettingsAndSupabaseModal: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold flex items-center gap-2">
                     <Cloud className="w-4 h-4 text-emerald-400" strokeWidth={1.75} />
-                    Supabase PostgreSQL + Local-First Hybrid Engine
+                    Supabase Realtime + PostgreSQL Cloud Sync
                   </span>
                   <span
                     className={`text-[10px] font-mono-num px-2 py-0.5 rounded-md font-semibold ${
@@ -231,13 +233,40 @@ export const SettingsAndSupabaseModal: React.FC = () => {
                         : 'bg-amber-500/20 text-amber-300'
                     }`}
                   >
-                    {supabaseStatus === 'connected' ? 'Connected' : 'Local-First Mode'}
+                    {supabaseStatus === 'connected' ? 'Connected (Live Sync)' : 'Local-First Mode'}
                   </span>
                 </div>
                 <p className="text-[11px] text-zinc-400 leading-relaxed">
-                  The complete PostgreSQL DDL schema with Row-Level Security (RLS) is located at{' '}
-                  <code className="text-zinc-200 font-mono">supabase/schema.sql</code>. Enter your Supabase Project URL and Anon Key below (or in <code className="text-zinc-200 font-mono">.env</code>) to enable cloud sync.
+                  Your PC and Mobile automatically sync live via{' '}
+                  <span className="text-zinc-200 font-medium">Supabase Realtime Broadcast & Presence</span>{' '}
+                  with zero database setup required. For persistent database rows when all devices are closed, run the 3-line SQL snippet below in your Supabase SQL Editor.
                 </p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-zinc-50 border border-zinc-200/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold text-zinc-700">
+                    Optional PostgreSQL Persistence Table (No Auth / RLS Required)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(
+                        `CREATE TABLE IF NOT EXISTS public.ticktick_workspace (\n  id TEXT PRIMARY KEY,\n  payload JSONB NOT NULL,\n  updated_at TIMESTAMPTZ DEFAULT NOW()\n);\nALTER TABLE public.ticktick_workspace DISABLE ROW LEVEL SECURITY;\nGRANT ALL ON TABLE public.ticktick_workspace TO anon, authenticated, service_role;`
+                      );
+                      setSyncMessage('Copied PostgreSQL table setup SQL to clipboard.');
+                    }}
+                    className="px-2 py-1 rounded-md bg-zinc-900 text-white text-[10px] font-semibold hover:bg-zinc-800"
+                  >
+                    Copy Setup SQL
+                  </button>
+                </div>
+                <pre className="text-[10px] font-mono text-zinc-600 bg-white p-2 rounded-lg border border-zinc-200/70 overflow-x-auto">
+{`CREATE TABLE IF NOT EXISTS public.ticktick_workspace (
+  id TEXT PRIMARY KEY, payload JSONB NOT NULL, updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE public.ticktick_workspace DISABLE ROW LEVEL SECURITY;`}
+                </pre>
               </div>
 
               <form onSubmit={handleConnectSupabase} className="space-y-3">

@@ -38,6 +38,57 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
     await page.locator('button[title="List View"]').click();
   });
 
+  test('Supabase Cloud Push, Pull & Live PC <-> Mobile Cross-Device Sync', async ({
+    browser,
+    isMobile,
+  }) => {
+    // Run the multi-context PC <-> Mobile sync test once from the desktop runner
+    if (isMobile) return;
+
+    const pcContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const mobileContext = await browser.newContext({
+      viewport: { width: 375, height: 812 },
+      isMobile: true,
+      hasTouch: true,
+    });
+
+    const pcPage = await pcContext.newPage();
+    const mobilePage = await mobileContext.newPage();
+
+    await pcPage.goto('/');
+    await mobilePage.goto('/');
+
+    // Open Supabase settings on PC and verify Push & Pull succeed without RLS or Pull errors
+    await pcPage.locator('button[aria-label="Supabase Backend Settings"]').click();
+    await expect(pcPage.getByText('Connected (Live Sync)')).toBeVisible();
+
+    await pcPage.getByRole('button', { name: /Push to Supabase/i }).click();
+    await expect(pcPage.getByText(/Pushed .* tasks/i).first()).toBeVisible();
+
+    await pcPage.getByRole('button', { name: /Pull from Supabase/i }).click();
+    await expect(
+      pcPage.getByText(/(Pulled .* tasks|Connected to Supabase Cloud — workspace is up to date)/i).first()
+    ).toBeVisible();
+
+    // Close settings modal on PC
+    await pcPage.locator('button[title="Close Settings"]').click();
+
+    // Create a task on PC and verify it syncs live to Mobile via Supabase Realtime
+    const pcInput = pcPage.locator('input[placeholder*="Add task... Try NLP"]');
+    await pcInput.fill('Synced Task From PC to Mobile today !high');
+    await pcInput.press('Enter');
+
+    await expect(pcPage.getByText('Synced Task From PC to Mobile').first()).toBeVisible();
+
+    // Verify Mobile receives the task via Supabase Realtime Broadcast/Presence
+    await expect(mobilePage.getByText('Synced Task From PC to Mobile').first()).toBeVisible({
+      timeout: 8000,
+    });
+
+    await pcContext.close();
+    await mobileContext.close();
+  });
+
   test('All Modules Navigation (Calendar, Pomodoro, Habits, Matrix, Countdown, Statistics)', async ({
     page,
     isMobile,

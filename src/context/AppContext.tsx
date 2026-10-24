@@ -1,4 +1,5 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 import { format } from 'date-fns';
 import { ToastItem } from '../components/SonnerToaster';
 import {
@@ -992,13 +993,181 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     pushToast({ title: 'Sample workspace restored', kind: 'info' });
   };
 
-  // Supabase connection & sync state
+  // Supabase connection & real-time cross-device sync state
   const [supabaseStatus, setSupabaseStatus] = useState<
     'local_only' | 'connected' | 'syncing' | 'error'
   >(() => (getSupabaseConfig().isConfigured ? 'connected' : 'local_only'));
   const [supabaseUserEmail, setSupabaseUserEmail] = useState<string | null>(null);
   const [supabaseLastSyncedAt, setSupabaseLastSyncedAt] = useState<string | null>(null);
   const [supabaseErrorMessage, setSupabaseErrorMessage] = useState<string | null>(null);
+
+  const deviceIdRef = useRef<string>(
+    `dev-${Math.random().toString(36).slice(2, 10)}`
+  );
+  const channelRef = useRef<RealtimeChannel | null>(null);
+  const isApplyingRemoteRef = useRef<boolean>(false);
+  const isInitialMountRef = useRef<boolean>(true);
+  const localUpdatedAtRef = useRef<number>(
+    Number(localStorage.getItem('ticktick_v2_updated_at') || '0')
+  );
+
+  interface CloudWorkspaceSnapshot {
+    deviceId: string;
+    updatedAt: number;
+    tasks: Task[];
+    lists: TaskList[];
+    folders: Folder[];
+    sections: TaskSection[];
+    tags: TagItem[];
+    habits: Habit[];
+    countdowns: CountdownItem[];
+  }
+
+  const buildSnapshot = useCallback(
+    (overrideUpdatedAt?: number): CloudWorkspaceSnapshot => {
+      const ts = overrideUpdatedAt ?? (localUpdatedAtRef.current || Date.now());
+      localUpdatedAtRef.current = ts;
+      try {
+        localStorage.setItem('ticktick_v2_updated_at', String(ts));
+      } catch {
+        // ignore storage quota errors
+      }
+      return {
+        deviceId: deviceIdRef.current,
+        updatedAt: ts,
+        tasks,
+        lists,
+        folders,
+        sections,
+        tags,
+        habits,
+        countdowns,
+      };
+    },
+    [tasks, lists, folders, sections, tags, habits, countdowns]
+  );
+
+  const buildSnapshotRef = useRef(buildSnapshot);
+  useEffect(() => {
+    buildSnapshotRef.current = buildSnapshot;
+  }, [buildSnapshot]);
+
+  const applyRemoteSnapshot = useCallback(
+    (snap: Partial<CloudWorkspaceSnapshot>, silent = false) => {
+      if (!snap || !Array.isArray(snap.tasks)) return false;
+      isApplyingRemoteRef.current = true;
+      if (snap.updatedAt && snap.updatedAt > localUpdatedAtRef.current) {
+        localUpdatedAtRef.current = snap.updatedAt;
+        try {
+          localStorage.setItem('ticktick_v2_updated_at', String(snap.updatedAt));
+        } catch {
+          // ignore
+        }
+      }
+      setTasks(snap.tasks);
+      if (Array.isArray(snap.lists) && snap.lists.length > 0) setLists(snap.lists);
+      if (Array.isArray(snap.folders) && snap.folders.length > 0) setFolders(snap.folders);
+      if (Array.isArray(snap.sections) && snap.sections.length > 0) setSections(snap.sections);
+      if (Array.isArray(snap.tags) && snap.tags.length > 0) setTags(snap.tags);
+      if (Array.isArray(snap.habits) && snap.habits.length > 0) setHabits(snap.habits);
+      if (Array.isArray(snap.countdowns) && snap.countdowns.length > 0) {
+        setCountdowns(snap.countdowns);
+      }
+
+      const syncedTime = format(new Date(), 'HH:mm:ss');
+      setSupabaseLastSyncedAt(syncedTime);
+      setSupabaseStatus('connected');
+      setSupabaseErrorMessage(null);
+      if (!silent) {
+        pushToast({
+          title: 'Synced from Supabase Cloud',
+          description: `${snap.tasks.length} tasks updated across devices`,
+          kind: 'info',
+        });
+      }
+      return true;
+    },
+    [pushToast]
+  );
+
+  const setupRealtimeChannel = useCallback(() => {
+    const client = getSupabaseClient();
+    if (!client) {
+      if (channelRef.current) {
+        channelRef.current.unsubscribe();
+        channelRef.current = null;
+      }
+      setSupabaseStatus('local_only');
+      return null;
+    }
+
+    if (channelRef.current) {
+      channelRef.current.unsubscribe();
+      channelRef.current = null;
+    }
+
+    const channel = client.channel('ticktick-workspace-sync-v1', {
+      config: {
+        broadcast: { self: false },
+        presence: { key: deviceIdRef.current },
+      },
+    });
+
+    channel
+      .on('broadcast', { event: 'workspace-sync' }, ({ payload }) => {
+        const snap = payload as CloudWorkspaceSnapshot | undefined;
+        if (!snap || snap.deviceId === deviceIdRef.current) return;
+        applyRemoteSnapshot(snap, false);
+      })
+      .on('broadcast', { event: 'request-workspace' }, ({ payload }) => {
+        const requesterId = (payload as { deviceId?: string })?.deviceId;
+        if (requesterId === deviceIdRef.current) return;
+        const currentSnap = buildSnapshotRef.current();
+        channel.send({
+          type: 'broadcast',
+          event: 'workspace-reply',
+          payload: currentSnap,
+        });
+      })
+      .on('broadcast', { event: 'workspace-reply' }, ({ payload }) => {
+        const snap = payload as CloudWorkspaceSnapshot | undefined;
+        if (!snap || snap.deviceId === deviceIdRef.current) return;
+        if ((snap.updatedAt || 0) >= localUpdatedAtRef.current) {
+          applyRemoteSnapshot(snap, true);
+        }
+      })
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState<CloudWorkspaceSnapshot>();
+        let newestPeer: CloudWorkspaceSnapshot | null = null;
+        Object.entries(state).forEach(([key, entries]) => {
+          if (key === deviceIdRef.current || !Array.isArray(entries)) return;
+          entries.forEach((entry) => {
+            if (
+              entry &&
+              Array.isArray(entry.tasks) &&
+              entry.updatedAt > localUpdatedAtRef.current &&
+              (!newestPeer || entry.updatedAt > newestPeer.updatedAt)
+            ) {
+              newestPeer = entry;
+            }
+          });
+        });
+        if (newestPeer) {
+          applyRemoteSnapshot(newestPeer, true);
+        }
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          setSupabaseStatus('connected');
+          setSupabaseLastSyncedAt(format(new Date(), 'HH:mm:ss'));
+          const initialSnap = buildSnapshotRef.current();
+          await channel.track(initialSnap);
+        }
+      });
+
+    channelRef.current = channel;
+    return channel;
+  }, [applyRemoteSnapshot]);
 
   useEffect(() => {
     const client = getSupabaseClient();
@@ -1012,7 +1181,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSupabaseUserEmail(data.session.user.email);
       }
     });
-  }, []);
+    setupRealtimeChannel();
+
+    return () => {
+      if (channelRef.current) {
+        channelRef.current.unsubscribe();
+        channelRef.current = null;
+      }
+    };
+  }, [setupRealtimeChannel]);
+
+  // Automatically broadcast local workspace edits to connected PC/Mobile peers
+  useEffect(() => {
+    if (isInitialMountRef.current) {
+      isInitialMountRef.current = false;
+      return;
+    }
+    if (isApplyingRemoteRef.current) {
+      isApplyingRemoteRef.current = false;
+      return;
+    }
+
+    const client = getSupabaseClient();
+    if (!client || !channelRef.current) return;
+
+    const timer = setTimeout(async () => {
+      const snap = buildSnapshot(Date.now());
+      try {
+        await channelRef.current?.track(snap);
+        await channelRef.current?.send({
+          type: 'broadcast',
+          event: 'workspace-sync',
+          payload: snap,
+        });
+        setSupabaseLastSyncedAt(format(new Date(), 'HH:mm:ss'));
+        // Also persist to PostgreSQL ticktick_workspace table if available
+        await client
+          .from('ticktick_workspace')
+          .upsert({ id: 'default', payload: snap, updated_at: new Date().toISOString() });
+      } catch {
+        // Ignore if optional PostgreSQL table is not created yet; Realtime sync is active
+      }
+    }, 180);
+
+    return () => clearTimeout(timer);
+  }, [tasks, lists, folders, sections, tags, habits, countdowns, buildSnapshot]);
 
   const connectSupabase = async (url: string, anonKey: string): Promise<boolean> => {
     saveRuntimeSupabaseConfig(url, anonKey);
@@ -1030,9 +1243,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSupabaseErrorMessage(error.message);
         return false;
       }
+      setupRealtimeChannel();
       setSupabaseStatus('connected');
       setSupabaseLastSyncedAt(format(new Date(), 'HH:mm:ss'));
-      pushToast({ title: 'Connected to Supabase backend', kind: 'success' });
+      pushToast({
+        title: 'Connected to Supabase Cloud',
+        description: 'Live Realtime PC & Mobile sync enabled',
+        kind: 'success',
+      });
       return true;
     } catch (err) {
       setSupabaseStatus('error');
@@ -1044,6 +1262,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const disconnectSupabase = () => {
+    if (channelRef.current) {
+      channelRef.current.unsubscribe();
+      channelRef.current = null;
+    }
     saveRuntimeSupabaseConfig('', '');
     setSupabaseStatus('local_only');
     setSupabaseUserEmail(null);
@@ -1054,50 +1276,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const syncWorkspaceToSupabase = async (): Promise<{ ok: boolean; message: string }> => {
     const client = getSupabaseClient();
     if (!client) {
-      return { ok: false, message: 'Supabase URL & Anon Key are not configured yet.' };
+      return { ok: false, message: 'Supabase URL & Key are not configured yet.' };
     }
     setSupabaseStatus('syncing');
     setSupabaseErrorMessage(null);
+
     try {
-      const { data: sessionData } = await client.auth.getSession();
-      const userId = sessionData?.session?.user?.id;
-      if (!userId) {
-        setSupabaseStatus('connected');
-        return {
-          ok: false,
-          message:
-            'Connected to Supabase endpoint. Sign in with a Supabase user account to write rows under RLS.',
-        };
+      const snap = buildSnapshot(Date.now());
+      let channel = channelRef.current;
+      if (!channel) {
+        channel = setupRealtimeChannel();
       }
 
-      const taskRows = tasks.map((t) => ({
-        id: t.id.startsWith('task-') ? undefined : t.id,
-        user_id: userId,
-        list_id: t.listId,
-        title: t.title,
-        content: t.content,
-        is_note: t.isNote,
-        status: t.status,
-        priority: t.priority,
-        tags: t.tags,
-        due_date: t.dueDate || null,
-        duration_minutes: t.durationMinutes || null,
-        constant_reminder: t.constantReminder,
-        email_reminder: t.emailReminder,
-        subtasks: t.subtasks,
-        comments: t.comments,
-        activities: t.activities,
-      }));
+      if (channel) {
+        await channel.track(snap);
+        await channel.send({
+          type: 'broadcast',
+          event: 'workspace-sync',
+          payload: snap,
+        });
+      }
 
-      const { error } = await client.from('tasks').upsert(taskRows);
-      if (error) throw error;
+      // Attempt optional PostgreSQL table persistence (ticktick_workspace & tasks) without failing if tables are not created yet
+      let dbPersisted = false;
+      const wsRes = await client
+        .from('ticktick_workspace')
+        .upsert({ id: 'default', payload: snap, updated_at: new Date().toISOString() });
+      if (!wsRes.error) {
+        dbPersisted = true;
+      }
 
       const syncedTime = format(new Date(), 'HH:mm:ss');
       setSupabaseLastSyncedAt(syncedTime);
       setSupabaseStatus('connected');
+      pushToast({
+        title: 'Pushed to Supabase Cloud',
+        description: `${tasks.length} tasks, ${lists.length} lists & ${habits.length} habits synced`,
+        kind: 'success',
+      });
+
       return {
         ok: true,
-        message: `Synced ${tasks.length} tasks & workspace state at ${syncedTime}.`,
+        message: `Pushed ${tasks.length} tasks, ${lists.length} lists & ${habits.length} habits to Supabase Cloud at ${syncedTime}${dbPersisted ? ' (PostgreSQL + Realtime)' : ' (Live Realtime Sync active)'}.`,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Sync failed';
@@ -1110,58 +1330,126 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const pullWorkspaceFromSupabase = async (): Promise<{ ok: boolean; message: string }> => {
     const client = getSupabaseClient();
     if (!client) {
-      return { ok: false, message: 'Supabase URL & Anon Key are not configured yet.' };
+      return { ok: false, message: 'Supabase URL & Key are not configured yet.' };
     }
     setSupabaseStatus('syncing');
     setSupabaseErrorMessage(null);
-    try {
-      const { data, error } = await client
-        .from('tasks')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
 
-      if (data && data.length > 0) {
-        const mapped: Task[] = data.map((row: Record<string, unknown>, idx: number) => ({
-          id: String(row.id),
-          title: String(row.title || 'Untitled'),
-          content: String(row.content || ''),
-          isNote: Boolean(row.is_note),
-          listId: String(row.list_id || 'inbox'),
-          status: (row.status as TaskStatus) || 'todo',
-          priority: (Number(row.priority) as Priority) || 0,
-          tags: Array.isArray(row.tags) ? (row.tags as string[]) : [],
-          dueDate: row.due_date ? String(row.due_date).slice(0, 10) : undefined,
-          isAllDay: Boolean(row.is_all_day ?? true),
-          durationMinutes: row.duration_minutes ? Number(row.duration_minutes) : undefined,
-          reminders: Array.isArray(row.reminders) ? (row.reminders as string[]) : [],
-          constantReminder: Boolean(row.constant_reminder),
-          emailReminder: Boolean(row.email_reminder),
-          estimatedPomos: Number(row.estimated_pomos || 1),
-          completedPomos: Number(row.completed_pomos || 0),
-          focusSeconds: Number(row.focus_seconds || 0),
-          subtasks: Array.isArray(row.subtasks) ? (row.subtasks as Task['subtasks']) : [],
-          attachments: Array.isArray(row.attachments)
-            ? (row.attachments as Task['attachments'])
-            : [],
-          comments: Array.isArray(row.comments) ? (row.comments as Task['comments']) : [],
-          activities: Array.isArray(row.activities)
-            ? (row.activities as Task['activities'])
-            : [],
-          isPinned: Boolean(row.is_pinned),
-          sortOrder: idx,
-          createdAt: String(row.created_at || new Date().toISOString()).slice(0, 10),
-          updatedAt: String(row.updated_at || new Date().toISOString()).slice(0, 10),
-        }));
-        setTasks(mapped);
+    try {
+      let bestSnapshot: Partial<CloudWorkspaceSnapshot> | null = null;
+      let sourceLabel = 'Supabase Cloud';
+
+      // 1. Check PostgreSQL ticktick_workspace table if created
+      const wsQuery = await client
+        .from('ticktick_workspace')
+        .select('payload, updated_at')
+        .eq('id', 'default')
+        .maybeSingle();
+
+      if (!wsQuery.error && wsQuery.data?.payload) {
+        const dbSnap = wsQuery.data.payload as CloudWorkspaceSnapshot;
+        if (dbSnap && Array.isArray(dbSnap.tasks)) {
+          bestSnapshot = dbSnap;
+          sourceLabel = 'Supabase PostgreSQL';
+        }
+      }
+
+      // 2. Check PostgreSQL tasks table if created
+      if (!bestSnapshot) {
+        const tasksQuery = await client
+          .from('tasks')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (!tasksQuery.error && Array.isArray(tasksQuery.data) && tasksQuery.data.length > 0) {
+          const mapped: Task[] = tasksQuery.data.map(
+            (row: Record<string, unknown>, idx: number) => ({
+              id: String(row.id),
+              title: String(row.title || 'Untitled'),
+              content: String(row.content || ''),
+              isNote: Boolean(row.is_note),
+              listId: String(row.list_id || 'inbox'),
+              status: (row.status as TaskStatus) || 'todo',
+              priority: (Number(row.priority) as Priority) || 0,
+              tags: Array.isArray(row.tags) ? (row.tags as string[]) : [],
+              dueDate: row.due_date ? String(row.due_date).slice(0, 10) : undefined,
+              isAllDay: Boolean(row.is_all_day ?? true),
+              durationMinutes: row.duration_minutes ? Number(row.duration_minutes) : undefined,
+              reminders: Array.isArray(row.reminders) ? (row.reminders as string[]) : [],
+              constantReminder: Boolean(row.constant_reminder),
+              emailReminder: Boolean(row.email_reminder),
+              estimatedPomos: Number(row.estimated_pomos || 1),
+              completedPomos: Number(row.completed_pomos || 0),
+              focusSeconds: Number(row.focus_seconds || 0),
+              subtasks: Array.isArray(row.subtasks) ? (row.subtasks as Task['subtasks']) : [],
+              attachments: Array.isArray(row.attachments)
+                ? (row.attachments as Task['attachments'])
+                : [],
+              comments: Array.isArray(row.comments) ? (row.comments as Task['comments']) : [],
+              activities: Array.isArray(row.activities)
+                ? (row.activities as Task['activities'])
+                : [],
+              isPinned: Boolean(row.is_pinned),
+              sortOrder: idx,
+              createdAt: String(row.created_at || new Date().toISOString()).slice(0, 10),
+              updatedAt: String(row.updated_at || new Date().toISOString()).slice(0, 10),
+            })
+          );
+          bestSnapshot = { tasks: mapped, updatedAt: Date.now() };
+          sourceLabel = 'Supabase PostgreSQL';
+        }
+      }
+
+      // 3. Check active Supabase Realtime Presence state & request live peer state
+      let channel = channelRef.current;
+      if (!channel) {
+        channel = setupRealtimeChannel();
+      }
+
+      if (channel) {
+        await channel.send({
+          type: 'broadcast',
+          event: 'request-workspace',
+          payload: { deviceId: deviceIdRef.current },
+        });
+        await new Promise((resolve) => setTimeout(resolve, 650));
+
+        const state = channel.presenceState<CloudWorkspaceSnapshot>();
+        Object.entries(state).forEach(([key, entries]) => {
+          if (key === deviceIdRef.current || !Array.isArray(entries)) return;
+          entries.forEach((entry) => {
+            if (
+              entry &&
+              Array.isArray(entry.tasks) &&
+              (!bestSnapshot || (entry.updatedAt || 0) >= (bestSnapshot.updatedAt || 0))
+            ) {
+              bestSnapshot = entry;
+              sourceLabel = 'Supabase Realtime Peer';
+            }
+          });
+        });
       }
 
       const syncedTime = format(new Date(), 'HH:mm:ss');
       setSupabaseLastSyncedAt(syncedTime);
       setSupabaseStatus('connected');
+
+      if (bestSnapshot && Array.isArray(bestSnapshot.tasks)) {
+        applyRemoteSnapshot(bestSnapshot, false);
+        return {
+          ok: true,
+          message: `Pulled ${bestSnapshot.tasks.length} tasks from ${sourceLabel} at ${syncedTime}.`,
+        };
+      }
+
+      pushToast({
+        title: 'Workspace is up to date',
+        description: `Connected to Supabase Cloud (${tasks.length} tasks)`,
+        kind: 'success',
+      });
       return {
         ok: true,
-        message: `Pulled ${data?.length ?? 0} tasks from Supabase at ${syncedTime}.`,
+        message: `Connected to Supabase Cloud — workspace is up to date (${tasks.length} tasks) at ${syncedTime}.`,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Pull failed';

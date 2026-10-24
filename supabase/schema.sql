@@ -6,6 +6,15 @@
 
 create extension if not exists "uuid-ossp";
 
+-- 0. Cross-Device Instant Workspace Sync Table (Works immediately with Publishable / Anon Key)
+create table if not exists public.ticktick_workspace (
+  id text primary key,
+  payload jsonb not null,
+  updated_at timestamptz default now() not null
+);
+alter table public.ticktick_workspace disable row level security;
+grant all on table public.ticktick_workspace to anon, authenticated, service_role;
+
 -- 1. User Profiles & Settings (Themes, Pomodoro Prefs, Productivity Score)
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
