@@ -1,0 +1,250 @@
+@import "tailwindcss";
+
+/* ============================================================================
+ * Emil Kowalski Design Engineering + Taste Skill Token System
+ * - Custom Cubic-Bezier Curves (never generic ease-in)
+ * - Strict <220ms UI transition budgets
+ * - Tactile scale(0.97) button compression
+ * - Origin-aware scale(0.96) popover & modal entrances (never scale(0))
+ * - Disciplined Zinc neutral surfaces + 1px hairline borders + single accent
+ * ============================================================================ */
+
+:root {
+  /* Emil Kowalski Bespoke Easing Curves */
+  --ease-out-quart: cubic-bezier(0.165, 0.84, 0.44, 1);
+  --ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-out-expo: cubic-bezier(0.19, 1, 0.22, 1);
+  --ease-in-out-cubic: cubic-bezier(0.645, 0.045, 0.355, 1);
+  --spring-snappy: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Taste Skill: Single Accent + Disciplined Zinc Neutrals */
+  --brand-primary: #2563eb;
+  --brand-primary-hover: #1d4ed8;
+  --brand-rail-bg: #111318;
+  --surface-canvas: #fafafa;
+  --surface-card: #ffffff;
+  --surface-subtle: #f4f4f5;
+  --border-hairline: #e4e4e7;
+
+  font-family: 'Plus Jakarta Sans', 'Instrument Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  letter-spacing: -0.011em;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+[data-theme="classic-blue"] {
+  --brand-primary: #2563eb;
+  --brand-primary-hover: #1d4ed8;
+  --brand-rail-bg: #111318;
+}
+
+[data-theme="dark-obsidian"] {
+  --brand-primary: #18181b;
+  --brand-primary-hover: #27272a;
+  --brand-rail-bg: #09090b;
+}
+
+[data-theme="forest-emerald"] {
+  --brand-primary: #059669;
+  --brand-primary-hover: #047857;
+  --brand-rail-bg: #0c1713;
+}
+
+[data-theme="sunset-amber"] {
+  --brand-primary: #d97706;
+  --brand-primary-hover: #b45309;
+  --brand-rail-bg: #18120e;
+}
+
+[data-theme="sakura-rose"] {
+  --brand-primary: #e11d48;
+  --brand-primary-hover: #be123c;
+  --brand-rail-bg: #191014;
+}
+
+[data-theme="nordic-slate"] {
+  --brand-primary: #0284c7;
+  --brand-primary-hover: #0369a1;
+  --brand-rail-bg: #0f1720;
+}
+
+/* Typography & Tabular Numerals */
+h1, h2, h3, h4, .tracking-display {
+  letter-spacing: -0.022em;
+}
+
+.font-mono-num,
+time,
+input[type="time"],
+input[type="date"],
+input[type="number"] {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* Emil Kowalski Tactile Interactive Micro-Feedback */
+button:not(:disabled),
+[role="button"]:not(:disabled) {
+  transition:
+    transform 140ms var(--ease-out-quint),
+    background-color 140ms var(--ease-out-quart),
+    border-color 140ms var(--ease-out-quart),
+    color 140ms var(--ease-out-quart),
+    opacity 140ms var(--ease-out-quart),
+    box-shadow 140ms var(--ease-out-quart);
+}
+
+button:not(:disabled):active,
+.tactile-press:active {
+  transform: scale(0.97);
+}
+
+/* Origin-Aware Popover & Modal Animations (Never scale from 0) */
+@keyframes emil-popover-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes emil-modal-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes emil-backdrop-in {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes emil-check-pop {
+  0% {
+    transform: scale(0.86);
+  }
+  50% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes vaul-sheet-up {
+  0% {
+    opacity: 0.6;
+    transform: translate3d(0, 100%, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes vaul-drawer-left {
+  0% {
+    opacity: 0.8;
+    transform: translate3d(-100%, 0, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.animate-popover {
+  animation: emil-popover-in 180ms var(--ease-out-quint) forwards;
+  transform-origin: top right;
+  will-change: transform, opacity;
+}
+
+.animate-modal {
+  animation: emil-modal-in 200ms var(--ease-out-quint) forwards;
+  will-change: transform, opacity;
+}
+
+.animate-sheet-up {
+  animation: vaul-sheet-up 240ms var(--ease-out-quint) forwards;
+  will-change: transform, opacity;
+}
+
+.animate-drawer-left {
+  animation: vaul-drawer-left 220ms var(--ease-out-quint) forwards;
+  will-change: transform, opacity;
+}
+
+.animate-backdrop {
+  animation: emil-backdrop-in 160ms var(--ease-out-quart) forwards;
+}
+
+.animate-check,
+.animate-check-pop {
+  animation: emil-check-pop 220ms var(--spring-snappy) forwards;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Taste Skill Surface & Hairline Elevation */
+.surface-card {
+  background-color: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  box-shadow: 0 1px 2px 0 rgba(9, 9, 11, 0.03);
+}
+
+.surface-floating {
+  background-color: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  box-shadow:
+    0 12px 32px -4px rgba(9, 9, 11, 0.08),
+    0 4px 12px -2px rgba(9, 9, 11, 0.04),
+    0 0 0 1px rgba(9, 9, 11, 0.02);
+}
+
+/* Respect Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Subtle Precision Scrollbars */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(161, 161, 170, 0.35);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(113, 113, 122, 0.55);
+}

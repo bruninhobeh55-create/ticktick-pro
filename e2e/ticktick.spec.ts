@@ -1,0 +1,128 @@
+import { expect, test } from '@playwright/test';
+
+test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
+  test('Smart NLP Quick-Add, View Switcher (List / Kanban / Timeline), and Task Completion', async ({
+    page,
+  }) => {
+    await page.goto('/');
+
+    // Verify Tasks workspace header is visible (defaults to 'Today' smart view)
+    await expect(page.locator('h1', { hasText: 'Today' })).toBeVisible();
+
+    // Test Smart NLP Quick-Add input
+    const quickInput = page.locator('input[placeholder*="Add task... Try NLP"]');
+    await expect(quickInput).toBeVisible();
+
+    await quickInput.fill('Verify Playwright E2E flow today for 25m !high #qa');
+
+    // Verify live NLP token detection banner appears before submitting
+    await expect(page.getByText('Smart NLP recognized:')).toBeVisible();
+    await expect(page.getByText('#qa').first()).toBeVisible();
+
+    await quickInput.press('Enter');
+
+    // Verify newly created task appears in the list with its parsed #qa tag and 25m duration
+    await expect(page.getByText('Verify Playwright E2E flow').first()).toBeVisible();
+    await expect(page.getByText('25m').first()).toBeVisible();
+
+    // Switch to Kanban view
+    await page.locator('button[title="Kanban View"]').click();
+    await expect(page.getByText('To Do').first()).toBeVisible();
+    await expect(page.getByText('In Progress').first()).toBeVisible();
+
+    // Switch to Timeline (Gantt) view
+    await page.locator('button[title="Timeline View"]').click();
+    await expect(page.getByText('Timeline Duration View')).toBeVisible();
+
+    // Return to List view
+    await page.locator('button[title="List View"]').click();
+  });
+
+  test('All Modules Navigation (Calendar, Pomodoro, Habits, Matrix, Countdown, Statistics)', async ({
+    page,
+    isMobile,
+  }) => {
+    await page.goto('/');
+
+    if (!isMobile) {
+      const desktopRail = page.locator('aside[aria-label="Primary Module Navigation"]');
+      await expect(desktopRail).toBeVisible();
+
+      // 1. Calendar (5 Views)
+      await desktopRail.locator('button[aria-label="Calendar (5 Views)"]').click();
+      await expect(page.getByRole('button', { name: 'Month', exact: true })).toBeVisible();
+      await page.getByRole('button', { name: 'Agenda', exact: true }).click();
+      await expect(page.getByText('Engineering All-Hands Sync').first()).toBeVisible();
+
+      // 2. Pomodoro & Focus
+      await desktopRail.locator('button[aria-label="Pomodoro & Focus"]').click();
+      await expect(page.getByText('Focusing On Task')).toBeVisible();
+      await expect(page.getByRole('button', { name: /Start Focus/i })).toBeVisible();
+
+      // 3. Habit Tracker
+      await desktopRail.locator('button[aria-label="Habit Tracker"]').click();
+      await expect(page.getByText('Habit Tracker').first()).toBeVisible();
+
+      // 4. Eisenhower Matrix
+      await desktopRail.locator('button[aria-label="Eisenhower Matrix"]').click();
+      await expect(page.getByText('Urgent & Important').first()).toBeVisible();
+      await expect(page.getByText('Not Urgent & Important').first()).toBeVisible();
+
+      // 5. Countdown
+      await desktopRail.locator('button[aria-label="Countdown"]').click();
+      await expect(page.getByText('Countdown').first()).toBeVisible();
+
+      // 6. Statistics & Score
+      await desktopRail.locator('button[aria-label="Statistics & Score"]').click();
+      await expect(page.getByText('Achievement Score').first()).toBeVisible();
+    } else {
+      const mobileNav = page.locator('nav[aria-label="Mobile Bottom Navigation"]');
+      await expect(mobileNav).toBeVisible();
+
+      // Verify initial mobile state: TaskDetailPane sheet is NOT blocking the viewport
+      await expect(page.locator('h1', { hasText: 'Today' })).toBeVisible();
+      await expect(page.locator('aside[aria-label="Task Detail Inspector"]')).toHaveCount(0);
+
+      // Open off-canvas Slide-Over Drawer on mobile
+      await page.locator('button[aria-label="Toggle Sidebar"]').click();
+      const sidebar = page.locator('aside').filter({ hasText: 'Lists' }).first();
+      await expect(sidebar).toBeVisible();
+
+      // Select 'All Tasks' in mobile drawer and verify drawer auto-closes on mobile selection
+      await sidebar.getByRole('button', { name: /All Tasks/i }).click();
+      await expect(page.locator('h1', { hasText: 'All Tasks' })).toBeVisible();
+
+      // Tap a task on mobile to slide up the Vaul-style TaskDetailPane bottom sheet
+      const firstTask = page.locator('div[role="button"]').first();
+      await firstTask.click();
+      const closeDetailBtn = page.locator('button[aria-label="Close Detail Pane"]');
+      await expect(closeDetailBtn).toBeVisible();
+      await closeDetailBtn.click();
+      await expect(page.locator('aside[aria-label="Task Detail Inspector"]')).toHaveCount(0);
+
+      // Navigate via Mobile Bottom Bar: Calendar
+      await mobileNav.locator('button[aria-label="Calendar (5 Views)"]').click();
+      await expect(page.getByRole('button', { name: 'Month', exact: true })).toBeVisible();
+
+      // Navigate via Mobile Bottom Bar: Pomodoro / Focus
+      await mobileNav.locator('button[aria-label="Pomodoro & Focus"]').click();
+      await expect(page.getByText('Focusing On Task')).toBeVisible();
+      await expect(page.getByRole('button', { name: /Start Focus/i })).toBeVisible();
+
+      // Navigate via Mobile Bottom Bar: Habit Tracker
+      await mobileNav.locator('button[aria-label="Habit Tracker"]').click();
+      await expect(page.getByText('Habit Tracker').first()).toBeVisible();
+
+      // Open Mobile "More" Vaul-Style Bottom Sheet and navigate to Eisenhower Matrix & Stats
+      await mobileNav.locator('button[aria-label="More Modules and Settings"]').click();
+      await expect(page.getByRole('button', { name: 'Matrix' })).toBeVisible();
+      await page.getByRole('button', { name: 'Matrix' }).click();
+      await expect(page.getByText('Urgent & Important').first()).toBeVisible();
+
+      // Open Mobile "More" sheet again and open Statistics
+      await mobileNav.locator('button[aria-label="More Modules and Settings"]').click();
+      await page.getByRole('button', { name: 'Stats' }).click();
+      await expect(page.getByText('Achievement Score').first()).toBeVisible();
+    }
+  });
+});

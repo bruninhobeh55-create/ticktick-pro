@@ -1,0 +1,401 @@
+import React, { useState } from 'react';
+import {
+  Check,
+  Cloud,
+  Crown,
+  Database,
+  DownloadCloud,
+  Keyboard,
+  Palette,
+  RefreshCw,
+  Settings,
+  UploadCloud,
+  X,
+} from 'lucide-react';
+import { useApp } from '../context/AppContext';
+import { getSupabaseConfig } from '../lib/supabase';
+import { ThemeId } from '../types';
+
+export const SettingsAndSupabaseModal: React.FC = () => {
+  const {
+    isSettingsOpen,
+    setIsSettingsOpen,
+    settingsInitialTab,
+    openSettingsTab,
+    preferences,
+    updatePreferences,
+    setTheme,
+    resetDemoWorkspace,
+    supabaseStatus,
+    supabaseLastSyncedAt,
+    supabaseErrorMessage,
+    connectSupabase,
+    disconnectSupabase,
+    syncWorkspaceToSupabase,
+    pullWorkspaceFromSupabase,
+  } = useApp();
+
+  const currentCfg = getSupabaseConfig();
+  const [sbUrl, setSbUrl] = useState(currentCfg.url);
+  const [sbAnonKey, setSbAnonKey] = useState(currentCfg.anonKey);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+
+  if (!isSettingsOpen) return null;
+
+  const themes: { id: ThemeId; name: string; primary: string; rail: string }[] = [
+    { id: 'classic-blue', name: 'Linear Cobalt', primary: '#3b66f5', rail: '#121316' },
+    { id: 'dark-obsidian', name: 'Obsidian Zinc', primary: '#18181b', rail: '#09090b' },
+    { id: 'forest-emerald', name: 'Forest Emerald', primary: '#059669', rail: '#0c1f1a' },
+    { id: 'sunset-amber', name: 'Warm Terracotta', primary: '#ea580c', rail: '#1f140e' },
+    { id: 'sakura-rose', name: 'Crimson Studio', primary: '#e11d48', rail: '#1f1016' },
+    { id: 'nordic-slate', name: 'Nordic Slate', primary: '#0284c7', rail: '#111a24' },
+  ];
+
+  const handleConnectSupabase = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const ok = await connectSupabase(sbUrl, sbAnonKey);
+    setSyncMessage(
+      ok
+        ? 'Connected to Supabase successfully. You can now push or pull workspace rows.'
+        : 'Could not verify Supabase credentials. Check URL and Anon Key.'
+    );
+  };
+
+  return (
+    <div
+      onClick={() => setIsSettingsOpen(false)}
+      className="fixed inset-0 z-50 bg-zinc-950/40 backdrop-blur-[2px] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-backdrop"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-2xl surface-floating rounded-t-2xl sm:rounded-xl overflow-hidden flex flex-col max-h-[88dvh] sm:max-h-[85vh] animate-sheet-up sm:animate-modal"
+      >
+        <div className="sm:hidden w-10 h-1 rounded-full bg-zinc-300 mx-auto mt-2.5 shrink-0" />
+        {/* Top Modal Header */}
+        <div className="px-6 py-4 border-b border-zinc-200/80 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Settings className="w-4 h-4 text-zinc-700" strokeWidth={1.75} />
+            <h2 className="text-sm font-semibold text-zinc-900 tracking-tight">
+              Workspace Settings, Themes & Supabase Backend
+            </h2>
+          </div>
+          <button
+            onClick={() => setIsSettingsOpen(false)}
+            className="p-1.5 rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+          >
+            <X className="w-4 h-4" strokeWidth={1.75} />
+          </button>
+        </div>
+
+        {/* Navigation Tabs */}
+        <div className="flex border-b border-zinc-200/80 bg-zinc-50 px-6 gap-2 overflow-x-auto">
+          {(
+            [
+              ['general', 'General', <Settings className="w-3.5 h-3.5" strokeWidth={1.75} />],
+              ['themes', 'Themes', <Palette className="w-3.5 h-3.5" strokeWidth={1.75} />],
+              ['supabase', 'Supabase Backend', <Database className="w-3.5 h-3.5" strokeWidth={1.75} />],
+              ['shortcuts', 'Shortcuts', <Keyboard className="w-3.5 h-3.5" strokeWidth={1.75} />],
+              ['premium', 'TickTick Premium', <Crown className="w-3.5 h-3.5 text-amber-500" strokeWidth={1.75} />],
+            ] as const
+          ).map(([tabId, label, icon]) => (
+            <button
+              key={tabId}
+              onClick={() => openSettingsTab(tabId)}
+              className={`py-3 px-3 text-xs font-semibold border-b-2 flex items-center gap-1.5 whitespace-nowrap ${
+                settingsInitialTab === tabId
+                  ? 'border-zinc-900 text-zinc-900'
+                  : 'border-transparent text-zinc-500 hover:text-zinc-800'
+              }`}
+            >
+              {icon}
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Tab Content */}
+        <div className="p-6 overflow-y-auto space-y-5 flex-1">
+          {settingsInitialTab === 'general' && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Display Name
+                  </label>
+                  <input
+                    type="text"
+                    value={preferences.fullName}
+                    onChange={(e) => updatePreferences({ fullName: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-zinc-300 focus:outline-none focus:border-zinc-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={preferences.email}
+                    onChange={(e) => updatePreferences({ email: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-zinc-300 focus:outline-none focus:border-zinc-900"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-3.5 rounded-xl bg-zinc-50 border border-zinc-200/80">
+                <div>
+                  <div className="text-xs font-semibold text-zinc-800">Completion Sound Effects</div>
+                  <div className="text-[11px] text-zinc-500">
+                    Play harmonic chime when checking off tasks, habits, or Pomodoros
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={preferences.soundAlertEnabled}
+                  onChange={(e) => updatePreferences({ soundAlertEnabled: e.target.checked })}
+                  className="w-4 h-4 rounded text-zinc-900"
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3.5 rounded-xl bg-rose-50/50 border border-rose-200/80">
+                <div>
+                  <div className="text-xs font-semibold text-rose-900">Reset Sample Workspace</div>
+                  <div className="text-[11px] text-rose-700">
+                    Restore all default demo tasks, habits, Pomodoro logs, and lists
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    resetDemoWorkspace();
+                    setIsSettingsOpen(false);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold flex items-center gap-1"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" strokeWidth={1.75} /> Reset Data
+                </button>
+              </div>
+            </div>
+          )}
+
+          {settingsInitialTab === 'themes' && (
+            <div className="space-y-4">
+              <p className="text-xs text-zinc-500">
+                Personalize your navigation rail and accent tokens with disciplined studio themes.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {themes.map((t) => {
+                  const isSelected = preferences.theme === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => setTheme(t.id)}
+                      className={`p-3.5 rounded-xl border text-left flex items-center justify-between ${
+                        isSelected
+                          ? 'border-zinc-900 bg-zinc-50 ring-1 ring-zinc-900/10'
+                          : 'border-zinc-200/80 hover:bg-zinc-50/60'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center -space-x-1.5">
+                          <span
+                            className="w-5 h-5 rounded-full border border-white"
+                            style={{ backgroundColor: t.rail }}
+                          />
+                          <span
+                            className="w-5 h-5 rounded-full border border-white"
+                            style={{ backgroundColor: t.primary }}
+                          />
+                        </div>
+                        <span className="text-xs font-semibold text-zinc-800">{t.name}</span>
+                      </div>
+                      {isSelected && <Check className="w-4 h-4 text-zinc-900" strokeWidth={2} />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {settingsInitialTab === 'supabase' && (
+            <div className="space-y-4">
+              <div className="p-4 rounded-xl bg-zinc-900 text-zinc-100 border border-zinc-800 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold flex items-center gap-2">
+                    <Cloud className="w-4 h-4 text-emerald-400" strokeWidth={1.75} />
+                    Supabase PostgreSQL + Local-First Hybrid Engine
+                  </span>
+                  <span
+                    className={`text-[10px] font-mono-num px-2 py-0.5 rounded-md font-semibold ${
+                      supabaseStatus === 'connected'
+                        ? 'bg-emerald-500/20 text-emerald-300'
+                        : 'bg-amber-500/20 text-amber-300'
+                    }`}
+                  >
+                    {supabaseStatus === 'connected' ? 'Connected' : 'Local-First Mode'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-zinc-400 leading-relaxed">
+                  The complete PostgreSQL DDL schema with Row-Level Security (RLS) is located at{' '}
+                  <code className="text-zinc-200 font-mono">supabase/schema.sql</code>. Enter your Supabase Project URL and Anon Key below (or in <code className="text-zinc-200 font-mono">.env</code>) to enable cloud sync.
+                </p>
+              </div>
+
+              <form onSubmit={handleConnectSupabase} className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    VITE_SUPABASE_URL
+                  </label>
+                  <input
+                    type="url"
+                    required
+                    value={sbUrl}
+                    onChange={(e) => setSbUrl(e.target.value)}
+                    placeholder="https://xyzcompany.supabase.co"
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-zinc-300 font-mono focus:outline-none focus:border-zinc-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    VITE_SUPABASE_ANON_KEY
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={sbAnonKey}
+                    onChange={(e) => setSbAnonKey(e.target.value)}
+                    placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-zinc-300 font-mono focus:outline-none focus:border-zinc-900"
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <button
+                    type="submit"
+                    className="px-4 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-semibold"
+                  >
+                    Save & Connect Supabase
+                  </button>
+
+                  {supabaseStatus === 'connected' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const res = await syncWorkspaceToSupabase();
+                          setSyncMessage(res.message);
+                        }}
+                        className="px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200/80 text-emerald-700 hover:bg-emerald-100 text-xs font-semibold flex items-center gap-1.5"
+                      >
+                        <UploadCloud className="w-3.5 h-3.5" strokeWidth={1.75} /> Push to Supabase
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const res = await pullWorkspaceFromSupabase();
+                          setSyncMessage(res.message);
+                        }}
+                        className="px-3 py-2 rounded-lg bg-zinc-100 text-zinc-700 hover:bg-zinc-200 text-xs font-semibold flex items-center gap-1.5"
+                      >
+                        <DownloadCloud className="w-3.5 h-3.5" strokeWidth={1.75} /> Pull from Supabase
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          disconnectSupabase();
+                          setSbUrl('');
+                          setSbAnonKey('');
+                          setSyncMessage('Switched back to Local-First storage.');
+                        }}
+                        className="px-3 py-2 rounded-lg text-xs text-rose-600 hover:bg-rose-50"
+                      >
+                        Disconnect
+                      </button>
+                    </>
+                  )}
+                </div>
+              </form>
+
+              {(syncMessage || supabaseErrorMessage || supabaseLastSyncedAt) && (
+                <div className="p-3 rounded-lg bg-zinc-100 text-xs text-zinc-700 space-y-1 font-mono-num">
+                  {syncMessage && <div>{syncMessage}</div>}
+                  {supabaseErrorMessage && (
+                    <div className="text-rose-600 font-medium">{supabaseErrorMessage}</div>
+                  )}
+                  {supabaseLastSyncedAt && (
+                    <div className="text-[11px] text-zinc-400">
+                      Last verified at {supabaseLastSyncedAt}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {settingsInitialTab === 'shortcuts' && (
+            <div className="space-y-2 text-xs">
+              {[
+                ['Ctrl + K / Cmd + K', 'Open Command Palette & Global Search'],
+                ['Enter (in Quick Add)', 'Create Task with Smart NLP Parsing'],
+                ['#tag (in Quick Add)', 'Automatically assign or create tag'],
+                ['!high / !med / !low', 'Set task priority via keyboard'],
+                ['~ListName', 'Route task to target list'],
+                ['Space / Enter (on Task)', 'Inspect selected task details'],
+              ].map(([key, desc]) => (
+                <div
+                  key={key}
+                  className="flex items-center justify-between p-2.5 rounded-lg bg-zinc-50 border border-zinc-200/70"
+                >
+                  <span className="text-zinc-700 font-medium">{desc}</span>
+                  <kbd className="px-2 py-1 rounded-md bg-white border border-zinc-200/90 font-mono text-[11px] text-zinc-800">
+                    {key}
+                  </kbd>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {settingsInitialTab === 'premium' && (
+            <div className="space-y-4">
+              <div className="p-5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-100 flex items-center justify-between">
+                <div className="space-y-1">
+                  <div className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider bg-amber-400/15 text-amber-300 border border-amber-400/20 px-2 py-0.5 rounded-md">
+                    <Crown className="w-3 h-3 fill-current" /> All Premium Capabilities Active
+                  </div>
+                  <h3 className="text-base font-semibold tracking-tight">TickTick Premium Unlocked</h3>
+                  <p className="text-xs text-zinc-400">
+                    Every TickTick Premium capability is unlocked and active in this workspace.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                {[
+                  '299 Custom Lists & 999 Tasks per list',
+                  '199 Subtasks / Checklists per task',
+                  '5 Calendar Views (Month, Week, Day, 3-Day, Agenda)',
+                  'Timeline Gantt View with Duration Bars',
+                  'Task Start/End Duration & Time-Blocking',
+                  'Constant Reminders & Email Reminders',
+                  'Full White Noise Studio (Rain, Forest, Binaural, Pink/Brown)',
+                  'Unlimited Habits + Quantified Goals & Mood Logs',
+                  'Custom Smart Filters & Activity Revision History',
+                  'External Calendar Subscriptions (Google, Outlook, iCloud)',
+                ].map((feat) => (
+                  <div
+                    key={feat}
+                    className="flex items-center gap-2 p-2.5 rounded-lg bg-zinc-50 border border-zinc-200/70 text-zinc-700 font-medium"
+                  >
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0" strokeWidth={2} />
+                    <span>{feat}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
