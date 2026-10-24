@@ -83,6 +83,8 @@ interface AppContextValue {
   setIsCommandOpen: (v: boolean) => void;
   isSettingsOpen: boolean;
   setIsSettingsOpen: (v: boolean) => void;
+  isInstallModalOpen: boolean;
+  setIsInstallModalOpen: (v: boolean) => void;
   settingsInitialTab: 'general' | 'themes' | 'supabase' | 'shortcuts' | 'premium';
   openSettingsTab: (tab: 'general' | 'themes' | 'supabase' | 'shortcuts' | 'premium') => void;
 
@@ -244,6 +246,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
   const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<
     'general' | 'themes' | 'supabase' | 'shortcuts' | 'premium'
   >('general');
@@ -1933,6 +1936,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsCommandOpen,
       isSettingsOpen,
       setIsSettingsOpen,
+      isInstallModalOpen,
+      setIsInstallModalOpen,
       settingsInitialTab,
       openSettingsTab,
       toasts,
@@ -2034,6 +2039,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isSidebarCollapsed,
       isCommandOpen,
       isSettingsOpen,
+      isInstallModalOpen,
       settingsInitialTab,
       toasts,
       pushToast,

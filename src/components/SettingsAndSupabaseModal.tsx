@@ -4,11 +4,13 @@ import {
   Cloud,
   Crown,
   Database,
+  Download,
   DownloadCloud,
   Keyboard,
   Palette,
   RefreshCw,
   Settings,
+  Smartphone,
   UploadCloud,
   X,
 } from 'lucide-react';
@@ -20,6 +22,7 @@ export const SettingsAndSupabaseModal: React.FC = () => {
   const {
     isSettingsOpen,
     setIsSettingsOpen,
+    setIsInstallModalOpen,
     settingsInitialTab,
     openSettingsTab,
     preferences,
@@ -161,6 +164,27 @@ export const SettingsAndSupabaseModal: React.FC = () => {
                   onChange={(e) => updatePreferences({ soundAlertEnabled: e.target.checked })}
                   className="w-4 h-4 rounded text-zinc-900"
                 />
+              </div>
+
+              <div className="flex items-center justify-between p-3.5 rounded-xl bg-blue-50/70 border border-blue-200/80 gap-3">
+                <div>
+                  <div className="text-xs font-semibold text-blue-900 flex items-center gap-1.5">
+                    <Smartphone className="w-3.5 h-3.5 text-blue-600" />
+                    Mobile Application (PWA)
+                  </div>
+                  <div className="text-[11px] text-blue-700">
+                    Install TickTick Pro on your Android phone, iPhone, or Desktop for full-screen offline experience.
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsSettingsOpen(false);
+                    setIsInstallModalOpen(true);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-1 shrink-0"
+                >
+                  <Download className="w-3.5 h-3.5" /> Install App
+                </button>
               </div>
 
               <div className="flex items-center justify-between p-3.5 rounded-xl bg-rose-50/70 border border-rose-200/80 gap-3">

@@ -7,6 +7,7 @@ import {
   CloudOff,
   Compass,
   Crown,
+  Download,
   Flame,
   Grid2X2,
   Hourglass,
@@ -24,6 +25,7 @@ export const NavigationRail: React.FC = () => {
     activeModule,
     setActiveModule,
     setIsCommandOpen,
+    setIsInstallModalOpen,
     openSettingsTab,
     pomoRunning,
     pomoMode,
@@ -224,6 +226,15 @@ export const NavigationRail: React.FC = () => {
           </button>
 
           <button
+            onClick={() => setIsInstallModalOpen(true)}
+            title="Install TickTick Pro App (Mobile / Desktop PWA)"
+            aria-label="Install App"
+            className="w-10 h-10 rounded-lg flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.05]"
+          >
+            <Download className="w-4 h-4" strokeWidth={1.75} />
+          </button>
+
+          <button
             onClick={() => openSettingsTab('general')}
             title="Settings, Themes & Keyboard Shortcuts"
             aria-label="Open Settings"
@@ -357,14 +368,14 @@ export const NavigationRail: React.FC = () => {
               })}
             </div>
 
-            {/* Global Actions: Search, Supabase, Settings */}
-            <div className="grid grid-cols-3 gap-2 pt-2 border-t border-zinc-100">
+            {/* Global Actions: Search, Supabase, Settings, Install App */}
+            <div className="grid grid-cols-4 gap-1.5 pt-2 border-t border-zinc-100">
               <button
                 onClick={() => {
                   setMobileMoreOpen(false);
                   setIsCommandOpen(true);
                 }}
-                className="flex flex-col items-center justify-center gap-1 p-2.5 rounded-xl bg-zinc-50 border border-zinc-200/80 text-xs font-medium text-zinc-700"
+                className="flex flex-col items-center justify-center gap-1 p-2 rounded-xl bg-zinc-50 border border-zinc-200/80 text-[11px] font-medium text-zinc-700"
               >
                 <Search className="w-4 h-4 text-zinc-600" strokeWidth={1.75} />
                 <span>Search</span>
@@ -375,14 +386,14 @@ export const NavigationRail: React.FC = () => {
                   setMobileMoreOpen(false);
                   openSettingsTab('supabase');
                 }}
-                className="flex flex-col items-center justify-center gap-1 p-2.5 rounded-xl bg-zinc-50 border border-zinc-200/80 text-xs font-medium text-zinc-700"
+                className="flex flex-col items-center justify-center gap-1 p-2 rounded-xl bg-zinc-50 border border-zinc-200/80 text-[11px] font-medium text-zinc-700"
               >
                 {supabaseStatus === 'connected' ? (
                   <Cloud className="w-4 h-4 text-emerald-600" strokeWidth={1.75} />
                 ) : (
                   <CloudOff className="w-4 h-4 text-amber-600" strokeWidth={1.75} />
                 )}
-                <span>Cloud Sync</span>
+                <span>Sync</span>
               </button>
 
               <button
@@ -390,10 +401,21 @@ export const NavigationRail: React.FC = () => {
                   setMobileMoreOpen(false);
                   openSettingsTab('general');
                 }}
-                className="flex flex-col items-center justify-center gap-1 p-2.5 rounded-xl bg-zinc-50 border border-zinc-200/80 text-xs font-medium text-zinc-700"
+                className="flex flex-col items-center justify-center gap-1 p-2 rounded-xl bg-zinc-50 border border-zinc-200/80 text-[11px] font-medium text-zinc-700"
               >
                 <Settings className="w-4 h-4 text-zinc-600" strokeWidth={1.75} />
                 <span>Settings</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setMobileMoreOpen(false);
+                  setIsInstallModalOpen(true);
+                }}
+                className="flex flex-col items-center justify-center gap-1 p-2 rounded-xl bg-blue-50/80 border border-blue-200/70 text-[11px] font-medium text-blue-700"
+              >
+                <Download className="w-4 h-4 text-blue-600" strokeWidth={1.75} />
+                <span>Install</span>
               </button>
             </div>
           </div>

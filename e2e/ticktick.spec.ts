@@ -212,4 +212,35 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
       await expect(page.getByText('Achievement Score').first()).toBeVisible();
     }
   });
+
+  test('PWA Mobile Installation, Manifest & Standalone App Capabilities', async ({
+    page,
+    isMobile,
+  }) => {
+    await page.goto('/');
+
+    // 1. Verify Manifest and PWA Meta tags in document head
+    const manifestLink = page.locator('link[rel="manifest"]');
+    await expect(manifestLink).toHaveAttribute('href', './manifest.webmanifest');
+
+    const appleMeta = page.locator('meta[name="apple-mobile-web-app-capable"]');
+    await expect(appleMeta).toHaveAttribute('content', 'yes');
+
+    // 2. Open Install App Modal
+    if (!isMobile) {
+      await page.locator('button[aria-label="Install App"]').click();
+    } else {
+      const mobileNav = page.locator('nav[aria-label="Mobile Bottom Navigation"]');
+      await mobileNav.locator('button[aria-label="More Modules and Settings"]').click();
+      await page.getByRole('button', { name: 'Install', exact: true }).click();
+    }
+
+    // 3. Verify Install App Modal Content
+    await expect(page.getByRole('heading', { name: 'TickTick Pro', level: 3 })).toBeVisible();
+    await expect(page.getByText(/Progressive Web App/i)).toBeVisible();
+
+    // Close the modal
+    await page.getByLabel('Close', { exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'TickTick Pro', level: 3 })).not.toBeVisible();
+  });
 });

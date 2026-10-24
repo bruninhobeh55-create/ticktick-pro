@@ -5,6 +5,7 @@ import { CommandPaletteModal } from './components/CommandPaletteModal';
 import { CountdownModule } from './components/CountdownModule';
 import { EisenhowerMatrixModule } from './components/EisenhowerMatrixModule';
 import { HabitTrackerModule } from './components/HabitTrackerModule';
+import { InstallAppModal } from './components/InstallAppModal';
 import { NavigationRail } from './components/NavigationRail';
 import { PomodoroModule } from './components/PomodoroModule';
 import { SettingsAndSupabaseModal } from './components/SettingsAndSupabaseModal';
@@ -16,7 +17,7 @@ import { TaskWorkspace } from './components/TaskWorkspace';
 import { AppProvider, useApp } from './context/AppContext';
 
 const MainShell: React.FC = () => {
-  const { activeModule, toasts, dismissToast } = useApp();
+  const { activeModule, toasts, dismissToast, isInstallModalOpen, setIsInstallModalOpen } = useApp();
 
   return (
     <div className="h-[100dvh] w-screen overflow-hidden flex flex-col md:flex-row bg-zinc-50 text-zinc-900 antialiased">
@@ -45,6 +46,10 @@ const MainShell: React.FC = () => {
       <CommandPaletteModal />
       <SettingsAndSupabaseModal />
       <ActiveReminderModal />
+      <InstallAppModal
+        isOpen={isInstallModalOpen}
+        onClose={() => setIsInstallModalOpen(false)}
+      />
       <SonnerToaster toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
