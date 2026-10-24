@@ -10,6 +10,7 @@ import { NavigationRail } from './components/NavigationRail';
 import { PomodoroModule } from './components/PomodoroModule';
 import { SettingsAndSupabaseModal } from './components/SettingsAndSupabaseModal';
 import { SonnerToaster } from './components/SonnerToaster';
+import { SplashScreen } from './components/SplashScreen';
 import { StatisticsModule } from './components/StatisticsModule';
 import { TaskDetailPane } from './components/TaskDetailPane';
 import { TaskSidebar } from './components/TaskSidebar';
@@ -43,6 +44,7 @@ const MainShell: React.FC = () => {
       </div>
 
       {/* Global Overlays & Emil Kowalski Sonner Toast Stack */}
+      <SplashScreen />
       <CommandPaletteModal />
       <SettingsAndSupabaseModal />
       <ActiveReminderModal />
