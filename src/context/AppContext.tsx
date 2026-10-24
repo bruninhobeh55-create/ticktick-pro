@@ -125,8 +125,15 @@ interface AppContextValue {
   applyTemplate: (templateId: string, listId?: string) => Task | null;
 
   // List, Folder, Section, Tag & Filter Operations
-  addList: (name: string, color: string, folderId?: string, viewMode?: ViewMode) => TaskList;
+  addList: (
+    name: string,
+    color: string,
+    folderId?: string,
+    viewMode?: ViewMode,
+    extra?: Partial<TaskList>
+  ) => TaskList;
   updateList: (id: string, patch: Partial<TaskList>) => void;
+  duplicateList: (id: string) => void;
   deleteList: (id: string) => void;
   addFolder: (name: string) => void;
   updateFolder: (id: string, name: string) => void;
@@ -768,7 +775,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     name: string,
     color: string,
     folderId?: string,
-    viewMode: ViewMode = 'list'
+    viewMode: ViewMode = 'list',
+    extra?: Partial<TaskList>
   ) => {
     const newList: TaskList = {
       id: `list-${Date.now()}`,
@@ -776,6 +784,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       name: name.trim(),
       color,
       icon: 'list',
+      emoji: extra?.emoji || '📁',
+      listType: extra?.listType || 'task',
+      showInSmartList: extra?.showInSmartList || 'all',
+      isPinned: extra?.isPinned ?? false,
+      isArchived: extra?.isArchived ?? false,
       backgroundStyle: 'none',
       viewMode,
       isShared: false,
@@ -798,6 +811,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateList = (id: string, patch: Partial<TaskList>) => {
     setLists((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
     pushToast({ title: 'List updated', kind: 'success' });
+  };
+
+  const duplicateList = (id: string) => {
+    const source = lists.find((l) => l.id === id);
+    if (!source) return;
+    const copyId = `list-${Date.now()}`;
+    const copy: TaskList = {
+      ...source,
+      id: copyId,
+      name: `${source.name} (Copy)`,
+      sortOrder: lists.length,
+    };
+    setLists((prev) => [...prev, copy]);
+    const listTasks = tasks.filter((t) => t.listId === id && t.status !== 'trash');
+    if (listTasks.length > 0) {
+      const nowStr = format(new Date(), 'yyyy-MM-dd');
+      const clonedTasks: Task[] = listTasks.map((t, idx) => ({
+        ...t,
+        id: `task-${Date.now()}-${idx}`,
+        listId: copyId,
+        createdAt: nowStr,
+        updatedAt: nowStr,
+      }));
+      setTasks((prev) => [...clonedTasks, ...prev]);
+    }
+    pushToast({ title: `Duplicated list "${source.name}"`, kind: 'success' });
   };
 
   const deleteList = (id: string) => {
@@ -1430,12 +1469,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       if (channel) {
-        await channel.track(snap);
-        await channel.send({
-          type: 'broadcast',
-          event: 'workspace-sync',
-          payload: snap,
-        });
+        await Promise.race([
+          (async () => {
+            try {
+              await channel.track(snap);
+              await channel.send({
+                type: 'broadcast',
+                event: 'workspace-sync',
+                payload: snap,
+              });
+            } catch {
+              // ignore transient socket state
+            }
+          })(),
+          new Promise((resolve) => setTimeout(resolve, 1200)),
+        ]);
       }
 
       // Attempt optional PostgreSQL table persistence (ticktick_workspace & tasks) without failing if tables are not created yet
@@ -1646,6 +1694,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       applyTemplate,
       addList,
       updateList,
+      duplicateList,
       deleteList,
       addFolder,
       updateFolder,

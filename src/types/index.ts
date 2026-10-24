@@ -124,6 +124,11 @@ export interface TaskList {
   name: string;
   color: string;
   icon: string;
+  emoji?: string;
+  isPinned?: boolean;
+  isArchived?: boolean;
+  listType?: 'task' | 'note';
+  showInSmartList?: 'all' | 'hidden';
   backgroundStyle: 'none' | 'gradient-ocean' | 'gradient-sunset' | 'gradient-forest' | 'dots' | 'grid';
   viewMode: ViewMode;
   isShared: boolean;

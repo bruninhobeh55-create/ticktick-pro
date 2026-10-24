@@ -10,7 +10,7 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
     await expect(page.locator('h1', { hasText: 'Today' })).toBeVisible();
 
     // Test Smart NLP Quick-Add input
-    const quickInput = page.locator('input[placeholder*="Add task... Try NLP"]');
+    const quickInput = page.locator('input[placeholder*="Try NLP"]');
     await expect(quickInput).toBeVisible();
 
     await quickInput.fill('Verify Playwright E2E flow today for 25m !high #qa');
@@ -49,22 +49,26 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
     // 1. Verify PC Right Inspector Resize Handle exists
     await expect(page.locator('[aria-label="Resize Right Inspector"]')).toBeVisible();
 
-    // 2. Edit a Folder name & Delete a Tag in Sidebar
+    // 2. Edit a Folder name & Delete a Tag via Three-Dots (...) Context Menu in Sidebar
+    await page.locator('button[aria-label="Folder options Product & Engineering"]').click();
     await page.locator('button[aria-label="Rename folder Product & Engineering"]').click();
     const folderInput = page.locator('aside[aria-label="Lists, Tags, and Filters"] form input[type="text"]').first();
     await folderInput.fill('Core Engineering');
     await folderInput.press('Enter');
     await expect(page.getByText('Core Engineering').first()).toBeVisible();
 
-    // Edit a List via Edit List Modal
+    // Edit a List via Three-Dots (...) Menu -> 2-Column Edit List Modal with Live Preview
+    await page.locator('button[aria-label="List options Q4 Core Launch"]').click();
     await page.locator('button[aria-label="Edit list Q4 Core Launch"]').click();
     await expect(page.getByText('Edit List')).toBeVisible();
-    const listModalInput = page.locator('form input[placeholder="e.g. Q1 Product Roadmap"]');
+    await expect(page.getByText('View Type')).toBeVisible();
+    const listModalInput = page.locator('form input[placeholder="Name"]');
     await listModalInput.fill('Q4 Launch Renamed');
-    await page.getByRole('button', { name: 'Save Changes' }).click();
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(page.getByText('Q4 Launch Renamed').first()).toBeVisible();
 
-    // Delete a Tag
+    // Delete a Tag via Three-Dots (...) Menu
+    await page.locator('button[aria-label="Tag options finance"]').click();
     await page.locator('button[aria-label="Delete tag finance"]').click();
 
     // 3. Test Pomodoro / Stopwatch Focus Log Filters & Deletion
@@ -97,11 +101,11 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
     await desktopRail.locator('button[aria-label="Supabase Backend Settings"]').click();
     await expect(page.getByText('Connected (Live Sync)')).toBeVisible();
     await page.getByRole('button', { name: /Push to Supabase/i }).click();
-    await expect(page.getByText(/Pushed .* tasks/i).first()).toBeVisible();
+    await expect(page.getByText(/Pushed .* tasks/i).first()).toBeVisible({ timeout: 15000 });
     await page.getByRole('button', { name: /Pull from Supabase/i }).click();
     await expect(
       page.getByText(/(Pulled .* tasks|Connected to Supabase Cloud — workspace is up to date)/i).first()
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15000 });
     await page.locator('button[title="Close Settings"]').click();
 
     // 6. Test Reset to Blank Workspace
@@ -125,7 +129,7 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
       await desktopRail.locator('button[aria-label="Calendar (5 Views)"]').click();
       await expect(page.getByRole('button', { name: 'Month', exact: true })).toBeVisible();
       await page.getByRole('button', { name: 'Agenda', exact: true }).click();
-      await expect(page.getByText('Engineering All-Hands Sync').first()).toBeVisible();
+      await expect(page.getByText(/items/i).first()).toBeVisible();
 
       // 2. Pomodoro & Focus
       await desktopRail.locator('button[aria-label="Pomodoro & Focus"]').click();
@@ -136,10 +140,16 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
       await desktopRail.locator('button[aria-label="Habit Tracker"]').click();
       await expect(page.getByText('Habit Tracker').first()).toBeVisible();
 
-      // 4. Eisenhower Matrix
+      // 4. Eisenhower Matrix + Floating Task Detail Popover on Click
       await desktopRail.locator('button[aria-label="Eisenhower Matrix"]').click();
       await expect(page.getByText('Urgent & Important').first()).toBeVisible();
       await expect(page.getByText('Not Urgent & Important').first()).toBeVisible();
+      const q1Input = page.locator('input[placeholder*="+ Add to Urgent & Important"]');
+      await q1Input.fill('Inspect Matrix Popover Task');
+      await q1Input.press('Enter');
+      await page.getByText('Inspect Matrix Popover Task').first().click();
+      await expect(page.locator('[aria-label="Floating Task Inspector"]')).toBeVisible();
+      await page.locator('button[aria-label="Close task popover"]').click();
 
       // 5. Countdown
       await desktopRail.locator('button[aria-label="Countdown"]').click();

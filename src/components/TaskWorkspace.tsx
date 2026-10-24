@@ -12,12 +12,15 @@ import {
   ArrowRight,
   BellRing,
   Check,
+  ChevronDown,
+  ChevronRight,
   Clock,
   Columns3,
   Copy,
   FileText,
   Flag,
   GanttChart,
+  Hourglass,
   List as ListIcon,
   Mic,
   Palette,
@@ -56,6 +59,7 @@ export const TaskWorkspace: React.FC = () => {
     lists,
     sections,
     customFilters,
+    countdowns,
     selectedTaskId,
     setSelectedTaskId,
     addTask,
@@ -69,6 +73,7 @@ export const TaskWorkspace: React.FC = () => {
     setIsSidebarCollapsed,
     templates,
     applyTemplate,
+    setActiveModule,
   } = useApp();
 
   const [quickInput, setQuickInput] = useState('');
@@ -80,6 +85,11 @@ export const TaskWorkspace: React.FC = () => {
   const [showBgPicker, setShowBgPicker] = useState(false);
   const [newColumnName, setNewColumnName] = useState('');
   const [copiedSummary, setCopiedSummary] = useState(false);
+
+  // Collapsible section toggles
+  const [isCountdownCollapsed, setIsCountdownCollapsed] = useState(false);
+  const [isActiveSectionCollapsed, setIsActiveSectionCollapsed] = useState(false);
+  const [isCompletedCollapsed, setIsCompletedCollapsed] = useState(false);
 
   const today = startOfToday();
   const todayStr = format(today, 'yyyy-MM-dd');
@@ -112,6 +122,12 @@ export const TaskWorkspace: React.FC = () => {
     let base = tasks;
 
     if (sidebarSelection.kind === 'smart') {
+      // Respect showInSmartList === 'hidden' on lists
+      const hiddenListIds = new Set(
+        lists.filter((l) => l.showInSmartList === 'hidden').map((l) => l.id)
+      );
+      base = base.filter((t) => !hiddenListIds.has(t.listId));
+
       switch (sidebarSelection.id) {
         case 'completed':
           return base.filter((t) => t.status === 'completed');
@@ -172,7 +188,6 @@ export const TaskWorkspace: React.FC = () => {
       if (flt) {
         base = base.filter((t) => {
           if (t.status === 'trash' || t.status === 'wont_do') return false;
-          if (flt.criteria.status === 'todo' && t.status === 'completed') return false;
           if (
             flt.criteria.priorities.length > 0 &&
             !flt.criteria.priorities.includes(t.priority)
@@ -212,7 +227,7 @@ export const TaskWorkspace: React.FC = () => {
       if (sortBy === 'title') return a.title.localeCompare(b.title);
       return a.sortOrder - b.sortOrder;
     });
-  }, [tasks, sidebarSelection, customFilters, sortBy, todayStr, tomorrowStr, next7Str]);
+  }, [tasks, lists, sidebarSelection, customFilters, sortBy, todayStr, tomorrowStr, next7Str]);
 
   const handleQuickSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -250,6 +265,7 @@ export const TaskWorkspace: React.FC = () => {
           ? Array.from(new Set([...parsed.tags, sidebarSelection.id]))
           : parsed.tags,
       recurrenceRule: parsed.recurrenceRule,
+      isNote: activeList?.listType === 'note',
     });
 
     setQuickInput('');
@@ -425,7 +441,7 @@ export const TaskWorkspace: React.FC = () => {
             }}
             className={`w-4 h-4 rounded-[5px] border-[1.5px] flex items-center justify-center shrink-0 ${
               isDone
-                ? 'bg-zinc-900 border-zinc-900 text-white'
+                ? 'bg-zinc-400 border-zinc-400 text-white'
                 : PRIORITY_BORDER[task.priority]
             }`}
           >
@@ -433,7 +449,7 @@ export const TaskWorkspace: React.FC = () => {
           </button>
         )}
 
-        {/* Title & Metadata Badges */}
+        {/* Title & Metadata Badges (NO line-through when completed) */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             {task.isPinned && (
@@ -441,81 +457,87 @@ export const TaskWorkspace: React.FC = () => {
             )}
             <span
               className={`text-xs font-medium truncate ${
-                isDone ? 'line-through text-zinc-400' : 'text-zinc-900'
+                isDone ? 'text-zinc-400' : 'text-zinc-900'
               }`}
             >
               {task.title}
             </span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5 mt-1">
-            {taskList && sidebarSelection.kind !== 'list' && (
-              <span className="inline-flex items-center gap-1 text-[10px] text-zinc-500">
+          {!isDone && (
+            <div className="flex flex-wrap items-center gap-1.5 mt-1">
+              {task.subtasks.length > 0 && (
+                <span className="text-[10px] font-mono-num text-zinc-500 bg-zinc-100 px-1.5 py-0.5 rounded">
+                  {completedSubs}/{task.subtasks.length}
+                </span>
+              )}
+
+              {task.durationMinutes && (
+                <span className="inline-flex items-center gap-0.5 text-[10px] font-mono-num text-zinc-600 bg-zinc-100 px-1.5 py-0.5 rounded">
+                  <Clock className="w-2.5 h-2.5" strokeWidth={1.75} />
+                  {task.startTime ? `${task.startTime} (${task.durationMinutes}m)` : `${task.durationMinutes}m`}
+                </span>
+              )}
+
+              {task.recurrenceRule && (
+                <span
+                  title={`Repeats ${task.recurrenceRule}`}
+                  className="inline-flex items-center gap-0.5 text-[10px] text-zinc-500"
+                >
+                  <Repeat className="w-2.5 h-2.5" strokeWidth={1.75} />
+                  {task.recurrenceRule}
+                </span>
+              )}
+
+              {task.constantReminder && (
+                <span
+                  title="Constant Reminder Active (Premium)"
+                  className="inline-flex items-center gap-0.5 text-[10px] text-rose-700 bg-rose-50 border border-rose-200/70 px-1.5 py-0.5 rounded font-medium"
+                >
+                  <BellRing className="w-2.5 h-2.5" strokeWidth={1.75} />
+                  Constant
+                </span>
+              )}
+
+              {task.attachments.length > 0 && (
+                <Paperclip className="w-3 h-3 text-zinc-400" strokeWidth={1.75} />
+              )}
+
+              {task.tags.map((tg) => (
+                <span
+                  key={tg}
+                  className="text-[10px] px-1.5 py-0.2 rounded bg-zinc-100 text-zinc-600 font-medium"
+                >
+                  #{tg}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Right Side: Source List Badge, Due Date & Trash/Restore */}
+        <div className="flex items-center gap-2 shrink-0">
+          {taskList && sidebarSelection.kind !== 'list' && (
+            <span className="inline-flex items-center gap-1 text-[11px] text-zinc-400">
+              {taskList.emoji ? (
+                <span className="text-xs leading-none">{taskList.emoji}</span>
+              ) : (
                 <span
                   className="w-1.5 h-1.5 rounded-full"
                   style={{ backgroundColor: taskList.color }}
                 />
-                {taskList.name}
-              </span>
-            )}
+              )}
+              <span className="truncate max-w-[96px]">{taskList.name}</span>
+            </span>
+          )}
 
-            {task.subtasks.length > 0 && (
-              <span className="text-[10px] font-mono-num text-zinc-500 bg-zinc-100 px-1.5 py-0.5 rounded">
-                {completedSubs}/{task.subtasks.length}
-              </span>
-            )}
-
-            {task.durationMinutes && (
-              <span className="inline-flex items-center gap-0.5 text-[10px] font-mono-num text-zinc-600 bg-zinc-100 px-1.5 py-0.5 rounded">
-                <Clock className="w-2.5 h-2.5" strokeWidth={1.75} />
-                {task.startTime ? `${task.startTime} (${task.durationMinutes}m)` : `${task.durationMinutes}m`}
-              </span>
-            )}
-
-            {task.recurrenceRule && (
-              <span
-                title={`Repeats ${task.recurrenceRule}`}
-                className="inline-flex items-center gap-0.5 text-[10px] text-zinc-500"
-              >
-                <Repeat className="w-2.5 h-2.5" strokeWidth={1.75} />
-                {task.recurrenceRule}
-              </span>
-            )}
-
-            {task.constantReminder && (
-              <span
-                title="Constant Reminder Active (Premium)"
-                className="inline-flex items-center gap-0.5 text-[10px] text-rose-700 bg-rose-50 border border-rose-200/70 px-1.5 py-0.5 rounded font-medium"
-              >
-                <BellRing className="w-2.5 h-2.5" strokeWidth={1.75} />
-                Constant
-              </span>
-            )}
-
-            {task.attachments.length > 0 && (
-              <Paperclip className="w-3 h-3 text-zinc-400" strokeWidth={1.75} />
-            )}
-
-            {task.tags.map((tg) => (
-              <span
-                key={tg}
-                className="text-[10px] px-1.5 py-0.2 rounded bg-zinc-100 text-zinc-600 font-medium"
-              >
-                #{tg}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {/* Right Side: Due Date & Trash/Restore */}
-        <div className="flex items-center gap-2 shrink-0">
-          {task.dueDate && (
+          {task.dueDate && !isDone && (
             <span
               className={`text-[11px] font-mono-num px-1.5 py-0.5 rounded ${
                 isOverdue
                   ? 'text-rose-700 bg-rose-50 font-semibold'
                   : task.dueDate === todayStr
-                    ? 'text-blue-700 bg-blue-50 font-medium'
+                    ? 'text-blue-600 font-medium'
                     : 'text-zinc-500'
               }`}
             >
@@ -525,6 +547,13 @@ export const TaskWorkspace: React.FC = () => {
                   ? 'Tomorrow'
                   : format(parseISO(task.dueDate), 'MMM d')}
             </span>
+          )}
+
+          {taskList?.color && (
+            <span
+              className="w-2 h-2 rounded-full shrink-0"
+              style={{ backgroundColor: taskList.color }}
+            />
           )}
 
           {task.status === 'trash' ? (
@@ -582,10 +611,14 @@ export const TaskWorkspace: React.FC = () => {
           </button>
 
           {activeList && (
-            <span
-              className="w-2.5 h-2.5 rounded-full shrink-0"
-              style={{ backgroundColor: activeList.color }}
-            />
+            activeList.emoji ? (
+              <span className="text-sm leading-none shrink-0">{activeList.emoji}</span>
+            ) : (
+              <span
+                className="w-2.5 h-2.5 rounded-full shrink-0"
+                style={{ backgroundColor: activeList.color }}
+              />
+            )
           )}
 
           <h1 className="text-sm font-semibold text-zinc-900 truncate tracking-tight">
@@ -593,7 +626,7 @@ export const TaskWorkspace: React.FC = () => {
           </h1>
 
           <span className="text-[11px] font-mono-num px-1.5 py-0.5 rounded-md bg-zinc-100 text-zinc-600 font-medium shrink-0">
-            {filteredTasks.length}
+            {openTasks.length + pinnedTasks.length}
           </span>
 
           {activeList?.isShared && (
@@ -728,7 +761,7 @@ export const TaskWorkspace: React.FC = () => {
                 type="text"
                 value={quickInput}
                 onChange={(e) => setQuickInput(e.target.value)}
-                placeholder='Add task... Try NLP: "Design API tomorrow 2pm #supabase !high"'
+                placeholder={`+ Add task to "${headerTitle}"... Try NLP: "Design API tomorrow 2pm #supabase !high"`}
                 className="flex-1 min-w-0 bg-transparent text-xs text-zinc-900 placeholder:text-zinc-400 focus:outline-none"
               />
 
@@ -835,23 +868,102 @@ export const TaskWorkspace: React.FC = () => {
       <div className="flex-1 overflow-y-auto px-4 py-2">
         {viewMode === 'list' && (
           <div className="space-y-4 pb-8">
+            {/* Collapsible Countdown Section in Today View (matching Screenshot 3) */}
+            {sidebarSelection.kind === 'smart' &&
+              sidebarSelection.id === 'today' &&
+              countdowns.length > 0 && (
+                <section>
+                  <button
+                    type="button"
+                    onClick={() => setIsCountdownCollapsed((v) => !v)}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-zinc-700 hover:text-zinc-900 mb-1.5 px-1"
+                  >
+                    {isCountdownCollapsed ? (
+                      <ChevronRight className="w-3.5 h-3.5 text-zinc-400" strokeWidth={1.75} />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5 text-zinc-400" strokeWidth={1.75} />
+                    )}
+                    <span>Countdown</span>
+                    <span className="text-[11px] font-mono-num text-zinc-400">
+                      {countdowns.length}
+                    </span>
+                  </button>
+
+                  {!isCountdownCollapsed && (
+                    <div className="space-y-1">
+                      {countdowns.map((cd) => {
+                        const diffDays = differenceInCalendarDays(parseISO(cd.targetDate), today);
+                        return (
+                          <div
+                            key={cd.id}
+                            onClick={() => setActiveModule('countdown')}
+                            className="flex items-center justify-between px-3 py-2 rounded-lg bg-white hover:bg-zinc-50 border border-zinc-200/70 text-xs cursor-pointer"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span
+                                className="w-4 h-4 rounded flex items-center justify-center text-white shrink-0"
+                                style={{ backgroundColor: cd.color }}
+                              >
+                                <Hourglass className="w-2.5 h-2.5" strokeWidth={2} />
+                              </span>
+                              <span className="font-medium text-zinc-900 truncate">{cd.title}</span>
+                            </div>
+                            <span
+                              className="text-[11px] font-mono-num font-semibold shrink-0"
+                              style={{ color: cd.color }}
+                            >
+                              {diffDays === 0
+                                ? 'Today'
+                                : diffDays > 0
+                                  ? `${diffDays}d left`
+                                  : `${Math.abs(diffDays)}d ago`}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+              )}
+
             {/* Pinned Section */}
             {pinnedTasks.length > 0 && (
               <section>
-                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1.5 px-1 font-mono-num">
-                  <Pin className="w-3 h-3 text-blue-600" strokeWidth={1.75} /> Pinned ({pinnedTasks.length})
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-700 mb-1.5 px-1">
+                  <Pin className="w-3.5 h-3.5 text-blue-600" strokeWidth={1.75} />
+                  <span>Pinned</span>
+                  <span className="text-[11px] font-mono-num text-zinc-400">
+                    {pinnedTasks.length}
+                  </span>
                 </div>
                 <div className="space-y-1">{pinnedTasks.map(renderTaskRow)}</div>
               </section>
             )}
 
-            {/* Open Tasks */}
+            {/* Active / Today Tasks Section */}
             <section>
-              {pinnedTasks.length > 0 && (
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1.5 px-1 font-mono-num">
-                  Tasks ({openTasks.length})
-                </div>
+              {(openTasks.length > 0 || doneTasks.length > 0) && (
+                <button
+                  type="button"
+                  onClick={() => setIsActiveSectionCollapsed((v) => !v)}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-zinc-700 hover:text-zinc-900 mb-1.5 px-1"
+                >
+                  {isActiveSectionCollapsed ? (
+                    <ChevronRight className="w-3.5 h-3.5 text-zinc-400" strokeWidth={1.75} />
+                  ) : (
+                    <ChevronDown className="w-3.5 h-3.5 text-zinc-400" strokeWidth={1.75} />
+                  )}
+                  <span>
+                    {sidebarSelection.kind === 'smart' && sidebarSelection.id === 'today'
+                      ? 'Today'
+                      : 'Tasks'}
+                  </span>
+                  <span className="text-[11px] font-mono-num text-zinc-400">
+                    {openTasks.length}
+                  </span>
+                </button>
               )}
+
               {openTasks.length === 0 && pinnedTasks.length === 0 && doneTasks.length === 0 ? (
                 <div className="text-center py-16">
                   <div className="w-10 h-10 rounded-xl bg-zinc-100 text-zinc-500 flex items-center justify-center mx-auto mb-3 border border-zinc-200/80">
@@ -863,17 +975,33 @@ export const TaskWorkspace: React.FC = () => {
                   </p>
                 </div>
               ) : (
-                <div className="space-y-1">{openTasks.map(renderTaskRow)}</div>
+                !isActiveSectionCollapsed && (
+                  <div className="space-y-1">{openTasks.map(renderTaskRow)}</div>
+                )
               )}
             </section>
 
-            {/* Completed Section */}
+            {/* Dedicated Collapsible Completed Section (NO line-through) */}
             {doneTasks.length > 0 && (
               <section className="pt-2">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1.5 px-1 font-mono-num">
-                  Completed ({doneTasks.length})
-                </div>
-                <div className="space-y-1 opacity-75">{doneTasks.map(renderTaskRow)}</div>
+                <button
+                  type="button"
+                  onClick={() => setIsCompletedCollapsed((v) => !v)}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-zinc-700 hover:text-zinc-900 mb-1.5 px-1"
+                >
+                  {isCompletedCollapsed ? (
+                    <ChevronRight className="w-3.5 h-3.5 text-zinc-400" strokeWidth={1.75} />
+                  ) : (
+                    <ChevronDown className="w-3.5 h-3.5 text-zinc-400" strokeWidth={1.75} />
+                  )}
+                  <span>Completed</span>
+                  <span className="text-[11px] font-mono-num text-zinc-400">
+                    {doneTasks.length}
+                  </span>
+                </button>
+                {!isCompletedCollapsed && (
+                  <div className="space-y-1">{doneTasks.map(renderTaskRow)}</div>
+                )}
               </section>
             )}
           </div>
@@ -891,26 +1019,34 @@ export const TaskWorkspace: React.FC = () => {
                   ? listSections.map((sec) => ({
                       id: sec.id,
                       title: sec.name,
-                      items: filteredTasks.filter((t) => t.sectionId === sec.id),
+                      activeItems: filteredTasks.filter(
+                        (t) => t.sectionId === sec.id && t.status !== 'completed'
+                      ),
+                      completedItems: filteredTasks.filter(
+                        (t) => t.sectionId === sec.id && t.status === 'completed'
+                      ),
                       onAssign: (task: Task) => updateTask(task.id, { sectionId: sec.id }),
                     }))
                   : [
                       {
                         id: 'col-todo',
                         title: 'To Do',
-                        items: filteredTasks.filter((t) => t.status === 'todo'),
+                        activeItems: filteredTasks.filter((t) => t.status === 'todo'),
+                        completedItems: [] as Task[],
                         onAssign: (task: Task) => updateTask(task.id, { status: 'todo' }),
                       },
                       {
                         id: 'col-progress',
                         title: 'In Progress',
-                        items: filteredTasks.filter((t) => t.status === 'in_progress'),
+                        activeItems: filteredTasks.filter((t) => t.status === 'in_progress'),
+                        completedItems: [] as Task[],
                         onAssign: (task: Task) => updateTask(task.id, { status: 'in_progress' }),
                       },
                       {
                         id: 'col-done',
                         title: 'Completed',
-                        items: filteredTasks.filter((t) => t.status === 'completed'),
+                        activeItems: filteredTasks.filter((t) => t.status === 'completed'),
+                        completedItems: [] as Task[],
                         onAssign: (task: Task) =>
                           updateTask(task.id, {
                             status: 'completed',
@@ -918,6 +1054,97 @@ export const TaskWorkspace: React.FC = () => {
                           }),
                       },
                     ];
+
+              const renderKanbanCard = (task: Task, colIdx: number) => {
+                const isDone = task.status === 'completed';
+                return (
+                  <div
+                    key={task.id}
+                    onClick={() => setSelectedTaskId(task.id)}
+                    className={`p-3 rounded-lg bg-white border cursor-pointer ${
+                      selectedTaskId === task.id
+                        ? 'border-zinc-900 ring-1 ring-zinc-900/10'
+                        : 'border-zinc-200/80 hover:border-zinc-300'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2 min-w-0">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleTaskStatus(task.id);
+                          }}
+                          className={`mt-0.5 w-3.5 h-3.5 rounded-[4px] border flex items-center justify-center shrink-0 ${
+                            isDone
+                              ? 'bg-zinc-400 border-zinc-400 text-white'
+                              : PRIORITY_BORDER[task.priority]
+                          }`}
+                        >
+                          {isDone && <Check className="w-2.5 h-2.5 stroke-[2.5]" />}
+                        </button>
+                        <span
+                          className={`text-xs font-medium ${
+                            isDone ? 'text-zinc-400' : 'text-zinc-900'
+                          }`}
+                        >
+                          {task.title}
+                        </span>
+                      </div>
+                      <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded border shrink-0 ${
+                          PRIORITY_BADGE[task.priority].color
+                        }`}
+                      >
+                        {PRIORITY_BADGE[task.priority].label}
+                      </span>
+                    </div>
+
+                    {task.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {task.tags.map((tg) => (
+                          <span
+                            key={tg}
+                            className="text-[10px] px-1.5 py-0.2 rounded bg-zinc-100 text-zinc-600"
+                          >
+                            #{tg}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between mt-3 pt-2 border-t border-zinc-100 text-[10px] font-mono-num text-zinc-400">
+                      <span>{task.dueDate || 'No due date'}</span>
+                      <div className="flex items-center gap-1">
+                        {colIdx > 0 && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              columns[colIdx - 1].onAssign(task);
+                            }}
+                            className="p-1 rounded bg-zinc-100 hover:bg-zinc-200 text-zinc-600"
+                            title={`Move to ${columns[colIdx - 1].title}`}
+                          >
+                            <ArrowLeft className="w-3 h-3" strokeWidth={1.75} />
+                          </button>
+                        )}
+                        {colIdx < columns.length - 1 && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              columns[colIdx + 1].onAssign(task);
+                            }}
+                            className="p-1 rounded bg-zinc-100 hover:bg-zinc-200 text-zinc-600"
+                            title={`Move to ${columns[colIdx + 1].title}`}
+                          >
+                            <ArrowRight className="w-3 h-3" strokeWidth={1.75} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              };
 
               return (
                 <>
@@ -929,84 +1156,22 @@ export const TaskWorkspace: React.FC = () => {
                       <div className="flex items-center justify-between mb-2.5 px-1">
                         <span className="text-xs font-semibold text-zinc-800">{col.title}</span>
                         <span className="text-[11px] font-mono-num px-1.5 py-0.5 rounded-md bg-white text-zinc-500 border border-zinc-200/70">
-                          {col.items.length}
+                          {col.activeItems.length + col.completedItems.length}
                         </span>
                       </div>
 
                       <div className="space-y-2 overflow-y-auto flex-1 pr-0.5">
-                        {col.items.map((task) => (
-                          <div
-                            key={task.id}
-                            onClick={() => setSelectedTaskId(task.id)}
-                            className={`p-3 rounded-lg bg-white border cursor-pointer ${
-                              selectedTaskId === task.id
-                                ? 'border-zinc-900 ring-1 ring-zinc-900/10'
-                                : 'border-zinc-200/80 hover:border-zinc-300'
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <span
-                                className={`text-xs font-medium ${
-                                  task.status === 'completed'
-                                    ? 'line-through text-zinc-400'
-                                    : 'text-zinc-900'
-                                }`}
-                              >
-                                {task.title}
-                              </span>
-                              <span
-                                className={`text-[10px] px-1.5 py-0.5 rounded border shrink-0 ${
-                                  PRIORITY_BADGE[task.priority].color
-                                }`}
-                              >
-                                {PRIORITY_BADGE[task.priority].label}
-                              </span>
-                            </div>
+                        {col.activeItems.map((task) => renderKanbanCard(task, colIdx))}
 
-                            {task.tags.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-2">
-                                {task.tags.map((tg) => (
-                                  <span
-                                    key={tg}
-                                    className="text-[10px] px-1.5 py-0.2 rounded bg-zinc-100 text-zinc-600"
-                                  >
-                                    #{tg}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-
-                            <div className="flex items-center justify-between mt-3 pt-2 border-t border-zinc-100 text-[10px] font-mono-num text-zinc-400">
-                              <span>{task.dueDate || 'No due date'}</span>
-                              <div className="flex items-center gap-1">
-                                {colIdx > 0 && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      columns[colIdx - 1].onAssign(task);
-                                    }}
-                                    className="p-1 rounded bg-zinc-100 hover:bg-zinc-200 text-zinc-600"
-                                    title={`Move to ${columns[colIdx - 1].title}`}
-                                  >
-                                    <ArrowLeft className="w-3 h-3" strokeWidth={1.75} />
-                                  </button>
-                                )}
-                                {colIdx < columns.length - 1 && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      columns[colIdx + 1].onAssign(task);
-                                    }}
-                                    className="p-1 rounded bg-zinc-100 hover:bg-zinc-200 text-zinc-600"
-                                    title={`Move to ${columns[colIdx + 1].title}`}
-                                  >
-                                    <ArrowRight className="w-3 h-3" strokeWidth={1.75} />
-                                  </button>
-                                )}
-                              </div>
+                        {col.completedItems.length > 0 && (
+                          <div className="pt-2 border-t border-zinc-200/70 space-y-1.5">
+                            <div className="text-[10px] font-semibold text-zinc-500 px-1 flex items-center gap-1">
+                              <ChevronDown className="w-3 h-3" />
+                              Completed {col.completedItems.length}
                             </div>
+                            {col.completedItems.map((task) => renderKanbanCard(task, colIdx))}
                           </div>
-                        ))}
+                        )}
                       </div>
                     </div>
                   ))}
@@ -1053,6 +1218,80 @@ export const TaskWorkspace: React.FC = () => {
 
             {(() => {
               const days = Array.from({ length: 10 }, (_, i) => addDays(today, i - 1));
+              const renderTimelineRow = (task: Task) => {
+                const isDone = task.status === 'completed';
+                const sDate = task.startDate ? parseISO(task.startDate) : today;
+                const eDate = task.dueDate ? parseISO(task.dueDate) : sDate;
+                const startOffset = Math.max(
+                  0,
+                  Math.min(9, differenceInCalendarDays(sDate, days[0]))
+                );
+                const endOffset = Math.max(
+                  startOffset,
+                  Math.min(9, differenceInCalendarDays(eDate, days[0]))
+                );
+                const spanCols = endOffset - startOffset + 1;
+
+                return (
+                  <div
+                    key={task.id}
+                    onClick={() => setSelectedTaskId(task.id)}
+                    className="grid grid-cols-[240px_repeat(10,minmax(56px,1fr))] border-b border-zinc-100 items-center hover:bg-zinc-50/70 cursor-pointer"
+                  >
+                    <div className="px-3 py-2.5 border-r border-zinc-200/80 flex items-center justify-between gap-2 truncate">
+                      <span
+                        className={`text-xs font-medium truncate ${
+                          isDone ? 'text-zinc-400' : 'text-zinc-800'
+                        }`}
+                      >
+                        {task.title}
+                      </span>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const nextDue = format(addDays(eDate, 1), 'yyyy-MM-dd');
+                            updateTask(task.id, {
+                              startDate: format(sDate, 'yyyy-MM-dd'),
+                              dueDate: nextDue,
+                            });
+                          }}
+                          title="Extend duration +1 day"
+                          className="px-1.5 py-0.5 text-[10px] font-mono-num rounded bg-zinc-100 hover:bg-zinc-200 text-zinc-700"
+                        >
+                          +1d
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="col-span-10 grid grid-cols-10 items-center py-2 px-1 relative">
+                      <div
+                        style={{
+                          gridColumnStart: startOffset + 1,
+                          gridColumnEnd: startOffset + 1 + spanCols,
+                        }}
+                        className={`h-6 rounded-md px-2 flex items-center justify-between text-[10px] font-medium text-white ${
+                          isDone
+                            ? 'bg-zinc-400'
+                            : task.priority === 5
+                              ? 'bg-rose-600'
+                              : task.priority === 3
+                                ? 'bg-amber-600'
+                                : 'bg-zinc-900'
+                        }`}
+                      >
+                        <span className="truncate">{task.title}</span>
+                        {task.durationMinutes && (
+                          <span className="font-mono-num ml-1 opacity-80">
+                            {task.durationMinutes}m
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              };
+
               return (
                 <div className="overflow-x-auto">
                   <div className="min-w-[820px]">
@@ -1078,73 +1317,29 @@ export const TaskWorkspace: React.FC = () => {
                       })}
                     </div>
 
-                    {/* Timeline Task Rows */}
-                    {filteredTasks.map((task) => {
-                      const sDate = task.startDate ? parseISO(task.startDate) : today;
-                      const eDate = task.dueDate ? parseISO(task.dueDate) : sDate;
-                      const startOffset = Math.max(
-                        0,
-                        Math.min(9, differenceInCalendarDays(sDate, days[0]))
-                      );
-                      const endOffset = Math.max(
-                        startOffset,
-                        Math.min(9, differenceInCalendarDays(eDate, days[0]))
-                      );
-                      const spanCols = endOffset - startOffset + 1;
+                    {/* Active Timeline Task Rows */}
+                    {[...pinnedTasks, ...openTasks].map(renderTimelineRow)}
 
-                      return (
+                    {/* Completed Timeline Section */}
+                    {doneTasks.length > 0 && (
+                      <>
                         <div
-                          key={task.id}
-                          onClick={() => setSelectedTaskId(task.id)}
-                          className="grid grid-cols-[240px_repeat(10,minmax(56px,1fr))] border-b border-zinc-100 items-center hover:bg-zinc-50/70 cursor-pointer"
+                          onClick={() => setIsCompletedCollapsed((v) => !v)}
+                          className="px-3 py-2 bg-zinc-50 border-b border-zinc-200/70 text-xs font-semibold text-zinc-600 flex items-center gap-1.5 cursor-pointer"
                         >
-                          <div className="px-3 py-2.5 border-r border-zinc-200/80 flex items-center justify-between gap-2 truncate">
-                            <span className="text-xs font-medium text-zinc-800 truncate">
-                              {task.title}
-                            </span>
-                            <div className="flex items-center gap-1 shrink-0">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const nextDue = format(addDays(eDate, 1), 'yyyy-MM-dd');
-                                  updateTask(task.id, {
-                                    startDate: format(sDate, 'yyyy-MM-dd'),
-                                    dueDate: nextDue,
-                                  });
-                                }}
-                                title="Extend duration +1 day"
-                                className="px-1.5 py-0.5 text-[10px] font-mono-num rounded bg-zinc-100 hover:bg-zinc-200 text-zinc-700"
-                              >
-                                +1d
-                              </button>
-                            </div>
-                          </div>
-
-                          <div className="col-span-10 grid grid-cols-10 items-center py-2 px-1 relative">
-                            <div
-                              style={{
-                                gridColumnStart: startOffset + 1,
-                                gridColumnEnd: startOffset + 1 + spanCols,
-                              }}
-                              className={`h-6 rounded-md px-2 flex items-center justify-between text-[10px] font-medium text-white ${
-                                task.priority === 5
-                                  ? 'bg-rose-600'
-                                  : task.priority === 3
-                                    ? 'bg-amber-600'
-                                    : 'bg-zinc-900'
-                              }`}
-                            >
-                              <span className="truncate">{task.title}</span>
-                              {task.durationMinutes && (
-                                <span className="font-mono-num ml-1 opacity-80">
-                                  {task.durationMinutes}m
-                                </span>
-                              )}
-                            </div>
-                          </div>
+                          {isCompletedCollapsed ? (
+                            <ChevronRight className="w-3.5 h-3.5 text-zinc-400" />
+                          ) : (
+                            <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
+                          )}
+                          <span>Completed</span>
+                          <span className="text-[11px] font-mono-num text-zinc-400">
+                            {doneTasks.length}
+                          </span>
                         </div>
-                      );
-                    })}
+                        {!isCompletedCollapsed && doneTasks.map(renderTimelineRow)}
+                      </>
+                    )}
                   </div>
                 </div>
               );

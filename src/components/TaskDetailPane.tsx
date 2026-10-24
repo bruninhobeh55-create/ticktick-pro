@@ -6,6 +6,8 @@ import {
   BookmarkPlus,
   Calendar,
   Check,
+  ChevronDown,
+  ChevronRight,
   Clock,
   Copy,
   FileText,
@@ -57,6 +59,7 @@ export const TaskDetailPane: React.FC = () => {
   const [activeBottomTab, setActiveBottomTab] = useState<'comments' | 'activity'>('comments');
   const [templateSavedBanner, setTemplateSavedBanner] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+  const [isSubtasksCompletedCollapsed, setIsSubtasksCompletedCollapsed] = useState(false);
 
   const handleMouseDownResize = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -234,8 +237,8 @@ export const TaskDetailPane: React.FC = () => {
               type="text"
               value={task.title}
               onChange={(e) => updateTask(task.id, { title: e.target.value })}
-              className={`w-full text-sm font-semibold text-zinc-900 focus:outline-none tracking-tight ${
-                isDone ? 'line-through text-zinc-400' : ''
+              className={`w-full text-sm font-semibold focus:outline-none tracking-tight ${
+                isDone ? 'text-zinc-400' : 'text-zinc-900'
               }`}
             />
 
@@ -436,34 +439,79 @@ export const TaskDetailPane: React.FC = () => {
               </div>
 
               <div className="space-y-1">
-                {task.subtasks.map((sub) => (
-                  <div
-                    key={sub.id}
-                    className="group flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-zinc-50 hover:bg-zinc-100/80 border border-zinc-200/50"
-                  >
-                    <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={sub.completed}
-                        onChange={() => toggleSubtask(task.id, sub.id)}
-                        className="rounded text-zinc-900"
-                      />
-                      <span
-                        className={`text-xs truncate ${
-                          sub.completed ? 'line-through text-zinc-400' : 'text-zinc-800'
-                        }`}
-                      >
-                        {sub.title}
-                      </span>
-                    </label>
-                    <button
-                      onClick={() => deleteSubtask(task.id, sub.id)}
-                      className="opacity-100 lg:opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-rose-500 p-0.5"
+                {task.subtasks
+                  .filter((sub) => !sub.completed)
+                  .map((sub) => (
+                    <div
+                      key={sub.id}
+                      className="group flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-zinc-50 hover:bg-zinc-100/80 border border-zinc-200/50"
                     >
-                      <X className="w-3.5 h-3.5" strokeWidth={1.75} />
+                      <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={false}
+                          onChange={() => toggleSubtask(task.id, sub.id)}
+                          className="rounded text-zinc-900"
+                        />
+                        <span className="text-xs truncate text-zinc-800">{sub.title}</span>
+                      </label>
+                      <button
+                        onClick={() => deleteSubtask(task.id, sub.id)}
+                        className="opacity-100 lg:opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-rose-500 p-0.5"
+                      >
+                        <X className="w-3.5 h-3.5" strokeWidth={1.75} />
+                      </button>
+                    </div>
+                  ))}
+
+                {task.subtasks.some((sub) => sub.completed) && (
+                  <div className="pt-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setIsSubtasksCompletedCollapsed((v) => !v)}
+                      className="flex items-center gap-1 text-[11px] font-semibold text-zinc-400 hover:text-zinc-700 mb-1 px-1"
+                    >
+                      {isSubtasksCompletedCollapsed ? (
+                        <ChevronRight className="w-3 h-3" />
+                      ) : (
+                        <ChevronDown className="w-3 h-3" />
+                      )}
+                      <span>
+                        Completed {task.subtasks.filter((sub) => sub.completed).length}
+                      </span>
                     </button>
+                    {!isSubtasksCompletedCollapsed && (
+                      <div className="space-y-1">
+                        {task.subtasks
+                          .filter((sub) => sub.completed)
+                          .map((sub) => (
+                            <div
+                              key={sub.id}
+                              className="group flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-zinc-50/70 hover:bg-zinc-100/80 border border-zinc-200/40"
+                            >
+                              <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={true}
+                                  onChange={() => toggleSubtask(task.id, sub.id)}
+                                  className="rounded text-zinc-400"
+                                />
+                                <span className="text-xs truncate text-zinc-400">
+                                  {sub.title}
+                                </span>
+                              </label>
+                              <button
+                                onClick={() => deleteSubtask(task.id, sub.id)}
+                                className="opacity-100 lg:opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-rose-500 p-0.5"
+                              >
+                                <X className="w-3.5 h-3.5" strokeWidth={1.75} />
+                              </button>
+                            </div>
+                          ))}
+                      </div>
+                    )}
                   </div>
-                ))}
+                )}
               </div>
 
               <form

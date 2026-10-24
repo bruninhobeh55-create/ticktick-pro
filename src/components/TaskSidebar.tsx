@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { format, addDays, isBefore, parseISO, startOfToday } from 'date-fns';
 import {
+  Archive,
+  Ban,
   Calendar,
   CalendarClock,
   CalendarDays,
@@ -8,15 +10,24 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Columns3,
+  Copy,
+  Crown,
   Eraser,
   FileText,
   Filter,
   FolderPlus,
+  GanttChart,
   Hash,
   Inbox,
   Layers,
+  List as ListIcon,
+  MoreHorizontal,
   Pencil,
+  Pin,
   Plus,
+  Share2,
+  Smile,
   Trash2,
   UserCheck,
   X,
@@ -24,6 +35,18 @@ import {
 } from 'lucide-react';
 import { ActiveSidebarSelection, useApp } from '../context/AppContext';
 import { Priority, SmartListId, TaskList, ViewMode } from '../types';
+
+const LIST_EMOJIS = ['👋', '📋', '🚀', '💼', '🎯', '📚', '💡', '🏠', '🔥', '✨', '🎨', '⚡'];
+
+const LIST_COLOR_PRESETS = [
+  '#f87171',
+  '#fb923c',
+  '#facc15',
+  '#a3e635',
+  '#34d399',
+  '#38bdf8',
+  '#818cf8',
+];
 
 export const TaskSidebar: React.FC = () => {
   const {
@@ -36,6 +59,7 @@ export const TaskSidebar: React.FC = () => {
     customFilters,
     addList,
     updateList,
+    duplicateList,
     deleteList,
     addFolder,
     updateFolder,
@@ -51,13 +75,23 @@ export const TaskSidebar: React.FC = () => {
     setIsSidebarCollapsed,
   } = useApp();
 
-  // Create / Edit List Modal State
+  // Active three-dots context menu state
+  const [openMenu, setOpenMenu] = useState<{
+    kind: 'list' | 'folder' | 'tag' | 'filter';
+    id: string;
+  } | null>(null);
+
+  // Create / Edit List Modal State (Rich 2-Column TickTick Modal)
   const [showListModal, setShowListModal] = useState(false);
   const [editingListId, setEditingListId] = useState<string | null>(null);
   const [listName, setListName] = useState('');
-  const [listColor, setListColor] = useState('#3b66f5');
+  const [listEmoji, setListEmoji] = useState<string>('👋');
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [listColor, setListColor] = useState<string>('#38bdf8');
   const [listFolderId, setListFolderId] = useState<string>('');
   const [listViewMode, setListViewMode] = useState<ViewMode>('list');
+  const [listType, setListType] = useState<'task' | 'note'>('task');
+  const [showInSmartList, setShowInSmartList] = useState<'all' | 'hidden'>('all');
 
   // Create / Edit Folder State
   const [showNewFolderInput, setShowNewFolderInput] = useState(false);
@@ -83,6 +117,14 @@ export const TaskSidebar: React.FC = () => {
   // Blank Workspace Confirmation State
   const [confirmBlankReset, setConfirmBlankReset] = useState(false);
 
+  // Close context menu when clicking outside
+  useEffect(() => {
+    if (!openMenu) return;
+    const handleGlobalClick = () => setOpenMenu(null);
+    window.addEventListener('click', handleGlobalClick);
+    return () => window.removeEventListener('click', handleGlobalClick);
+  }, [openMenu]);
+
   if (isSidebarCollapsed) return null;
 
   const handleSelectAndCloseOnMobile = (sel: ActiveSidebarSelection) => {
@@ -95,38 +137,56 @@ export const TaskSidebar: React.FC = () => {
   const openCreateListModal = () => {
     setEditingListId(null);
     setListName('');
-    setListColor('#3b66f5');
+    setListEmoji('👋');
+    setListColor('#38bdf8');
     setListFolderId('');
     setListViewMode('list');
+    setListType('task');
+    setShowInSmartList('all');
+    setShowEmojiPicker(false);
     setShowListModal(true);
   };
 
-  const openEditListModal = (list: TaskList, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const openEditListModal = (list: TaskList, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setOpenMenu(null);
     setEditingListId(list.id);
     setListName(list.name);
-    setListColor(list.color);
+    setListEmoji(list.emoji || '👋');
+    setListColor(list.color || '');
     setListFolderId(list.folderId || '');
     setListViewMode(list.viewMode);
+    setListType(list.listType || 'task');
+    setShowInSmartList(list.showInSmartList || 'all');
+    setShowEmojiPicker(false);
     setShowListModal(true);
   };
 
   const handleSaveList = (e: React.FormEvent) => {
     e.preventDefault();
     if (!listName.trim()) return;
+    const effectiveColor = listColor || '#94a3b8';
     if (editingListId) {
       updateList(editingListId, {
         name: listName.trim(),
-        color: listColor,
+        emoji: listEmoji,
+        color: effectiveColor,
         folderId: listFolderId || undefined,
         viewMode: listViewMode,
+        listType,
+        showInSmartList,
       });
     } else {
       const created = addList(
         listName,
-        listColor,
+        effectiveColor,
         listFolderId || undefined,
-        listViewMode
+        listViewMode,
+        {
+          emoji: listEmoji,
+          listType,
+          showInSmartList,
+        }
       );
       handleSelectAndCloseOnMobile({ kind: 'list', id: created.id });
     }
@@ -219,28 +279,39 @@ export const TaskSidebar: React.FC = () => {
     },
   ];
 
-  const ungroupedLists = lists.filter((l) => !l.folderId);
+  const visibleLists = lists.filter((l) => !l.isArchived);
+  const ungroupedLists = visibleLists
+    .filter((l) => !l.folderId)
+    .sort((a, b) => (a.isPinned === b.isPinned ? 0 : a.isPinned ? -1 : 1));
 
   const renderListRow = (list: TaskList) => {
     const isSelected = sidebarSelection.kind === 'list' && sidebarSelection.id === list.id;
     const listCount = activeTasks.filter((t) => t.listId === list.id).length;
+    const isMenuOpen = openMenu?.kind === 'list' && openMenu.id === list.id;
 
     return (
       <div
         key={list.id}
         onClick={() => handleSelectAndCloseOnMobile({ kind: 'list', id: list.id })}
-        className={`group flex items-center justify-between px-2.5 py-2 md:py-1.5 rounded-lg text-xs cursor-pointer ${
+        className={`relative group flex items-center justify-between px-2.5 py-2 md:py-1.5 rounded-lg text-xs cursor-pointer ${
           isSelected
-            ? 'bg-zinc-900/[0.06] text-zinc-900 font-semibold'
+            ? 'bg-blue-500/10 text-zinc-900 font-semibold'
             : 'text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-900'
         }`}
       >
         <span className="flex items-center gap-2 truncate min-w-0">
-          <span
-            className="w-2 h-2 rounded-full shrink-0"
-            style={{ backgroundColor: list.color }}
-          />
+          {list.emoji ? (
+            <span className="text-xs leading-none shrink-0">{list.emoji}</span>
+          ) : (
+            <span
+              className="w-2 h-2 rounded-full shrink-0"
+              style={{ backgroundColor: list.color }}
+            />
+          )}
           <span className="truncate">{list.name}</span>
+          {list.isPinned && (
+            <Pin className="w-2.5 h-2.5 text-blue-600 fill-blue-600 shrink-0" strokeWidth={1.75} />
+          )}
           {list.isShared && (
             <span className="text-[9px] px-1 py-0.2 rounded bg-zinc-200/80 text-zinc-600 font-medium shrink-0">
               Team
@@ -249,33 +320,106 @@ export const TaskSidebar: React.FC = () => {
         </span>
 
         <div className="flex items-center gap-1 shrink-0">
-          <div className="flex items-center gap-0.5 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-            <button
-              type="button"
-              onClick={(e) => openEditListModal(list, e)}
-              title={`Edit list "${list.name}"`}
-              aria-label={`Edit list ${list.name}`}
-              className="p-1 rounded hover:bg-zinc-200 text-zinc-400 hover:text-zinc-800"
-            >
-              <Pencil className="w-3 h-3" strokeWidth={1.75} />
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                deleteList(list.id);
-              }}
-              title={`Delete list "${list.name}"`}
-              aria-label={`Delete list ${list.name}`}
-              className="p-1 rounded hover:bg-rose-50 text-zinc-400 hover:text-rose-600"
-            >
-              <Trash2 className="w-3 h-3" strokeWidth={1.75} />
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpenMenu(isMenuOpen ? null : { kind: 'list', id: list.id });
+            }}
+            title={`More options for "${list.name}"`}
+            aria-label={`List options ${list.name}`}
+            className={`p-1 rounded hover:bg-zinc-200/80 text-zinc-400 hover:text-zinc-800 transition-opacity ${
+              isMenuOpen ? 'opacity-100 bg-zinc-200/80 text-zinc-800' : 'md:opacity-0 md:group-hover:opacity-100'
+            }`}
+          >
+            <MoreHorizontal className="w-3.5 h-3.5" strokeWidth={1.75} />
+          </button>
+
           {listCount > 0 && (
             <span className="text-[11px] font-mono-num text-zinc-400 pl-0.5">{listCount}</span>
           )}
+          {list.color && (
+            <span
+              className="w-2 h-2 rounded-full shrink-0 ml-0.5"
+              style={{ backgroundColor: list.color }}
+            />
+          )}
         </div>
+
+        {/* Floating Three-Dots Context Menu (TickTick Popover) */}
+        {isMenuOpen && (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="absolute right-2 top-8 z-50 w-44 rounded-xl bg-zinc-900 text-zinc-100 shadow-2xl border border-zinc-800 py-1.5 text-xs animate-popover"
+          >
+            <button
+              type="button"
+              aria-label={`Edit list ${list.name}`}
+              onClick={(e) => openEditListModal(list, e)}
+              className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-zinc-800 text-left"
+            >
+              <Pencil className="w-3.5 h-3.5 text-zinc-400" strokeWidth={1.75} />
+              <span>Edit</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                updateList(list.id, { isPinned: !list.isPinned });
+                setOpenMenu(null);
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-zinc-800 text-left"
+            >
+              <Pin className="w-3.5 h-3.5 text-zinc-400" strokeWidth={1.75} />
+              <span>{list.isPinned ? 'Unpin' : 'Pin'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                duplicateList(list.id);
+                setOpenMenu(null);
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-zinc-800 text-left"
+            >
+              <Copy className="w-3.5 h-3.5 text-zinc-400" strokeWidth={1.75} />
+              <span>Duplicate</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                updateList(list.id, { isShared: !list.isShared });
+                setOpenMenu(null);
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-zinc-800 text-left"
+            >
+              <Share2 className="w-3.5 h-3.5 text-zinc-400" strokeWidth={1.75} />
+              <span>{list.isShared ? 'Stop Sharing' : 'Share'}</span>
+            </button>
+            <div className="my-1 border-t border-zinc-800" />
+            <button
+              type="button"
+              onClick={() => {
+                updateList(list.id, { isArchived: true });
+                setOpenMenu(null);
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-zinc-800 text-left"
+            >
+              <Archive className="w-3.5 h-3.5 text-zinc-400" strokeWidth={1.75} />
+              <span>Archive</span>
+            </button>
+            <button
+              type="button"
+              aria-label={`Delete list ${list.name}`}
+              onClick={() => {
+                deleteList(list.id);
+                setOpenMenu(null);
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-rose-500/20 text-rose-400 text-left"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-400" strokeWidth={1.75} />
+              <span>Delete</span>
+            </button>
+          </div>
+        )}
       </div>
     );
   };
@@ -344,7 +488,7 @@ export const TaskSidebar: React.FC = () => {
         <div className="px-2.5 py-2">
           <div className="flex items-center justify-between px-2 mb-1.5">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 font-mono-num">
-              Lists ({lists.length}/299)
+              Lists ({visibleLists.length}/299)
             </span>
             <div className="flex items-center gap-0.5">
               <button
@@ -392,8 +536,9 @@ export const TaskSidebar: React.FC = () => {
           {/* Folders */}
           <div className="space-y-1">
             {folders.map((folder) => {
-              const folderLists = lists.filter((l) => l.folderId === folder.id);
+              const folderLists = visibleLists.filter((l) => l.folderId === folder.id);
               const isEditingThisFolder = editingFolderId === folder.id;
+              const isFolderMenuOpen = openMenu?.kind === 'folder' && openMenu.id === folder.id;
 
               return (
                 <div key={folder.id} className="space-y-0.5">
@@ -434,7 +579,7 @@ export const TaskSidebar: React.FC = () => {
                   ) : (
                     <div
                       onClick={() => toggleFolderCollapse(folder.id)}
-                      className="group flex items-center justify-between px-2 py-1.5 md:py-1 rounded-md text-xs font-semibold text-zinc-600 hover:bg-zinc-200/50 cursor-pointer"
+                      className="relative group flex items-center justify-between px-2 py-1.5 md:py-1 rounded-md text-xs font-semibold text-zinc-600 hover:bg-zinc-200/50 cursor-pointer"
                     >
                       <span className="flex items-center gap-1.5 truncate min-w-0">
                         {folder.isCollapsed ? (
@@ -446,37 +591,61 @@ export const TaskSidebar: React.FC = () => {
                       </span>
 
                       <div className="flex items-center gap-1 shrink-0">
-                        <div className="flex items-center gap-0.5 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingFolderId(folder.id);
-                              setEditingFolderName(folder.name);
-                            }}
-                            title={`Rename folder "${folder.name}"`}
-                            aria-label={`Rename folder ${folder.name}`}
-                            className="p-1 rounded hover:bg-zinc-200 text-zinc-400 hover:text-zinc-800"
-                          >
-                            <Pencil className="w-3 h-3" strokeWidth={1.75} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              deleteFolder(folder.id);
-                            }}
-                            title={`Delete folder "${folder.name}"`}
-                            aria-label={`Delete folder ${folder.name}`}
-                            className="p-1 rounded hover:bg-rose-50 text-zinc-400 hover:text-rose-600"
-                          >
-                            <Trash2 className="w-3 h-3" strokeWidth={1.75} />
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenMenu(
+                              isFolderMenuOpen ? null : { kind: 'folder', id: folder.id }
+                            );
+                          }}
+                          title={`Folder options for "${folder.name}"`}
+                          aria-label={`Folder options ${folder.name}`}
+                          className={`p-1 rounded hover:bg-zinc-200/80 text-zinc-400 hover:text-zinc-800 transition-opacity ${
+                            isFolderMenuOpen
+                              ? 'opacity-100 bg-zinc-200/80 text-zinc-800'
+                              : 'md:opacity-0 md:group-hover:opacity-100'
+                          }`}
+                        >
+                          <MoreHorizontal className="w-3.5 h-3.5" strokeWidth={1.75} />
+                        </button>
                         <span className="text-[10px] font-mono-num text-zinc-400">
                           {folderLists.length}
                         </span>
                       </div>
+
+                      {isFolderMenuOpen && (
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute right-2 top-7 z-50 w-40 rounded-xl bg-zinc-900 text-zinc-100 shadow-2xl border border-zinc-800 py-1.5 text-xs font-normal animate-popover"
+                        >
+                          <button
+                            type="button"
+                            aria-label={`Rename folder ${folder.name}`}
+                            onClick={() => {
+                              setEditingFolderId(folder.id);
+                              setEditingFolderName(folder.name);
+                              setOpenMenu(null);
+                            }}
+                            className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-zinc-800 text-left"
+                          >
+                            <Pencil className="w-3.5 h-3.5 text-zinc-400" strokeWidth={1.75} />
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Delete folder ${folder.name}`}
+                            onClick={() => {
+                              deleteFolder(folder.id);
+                              setOpenMenu(null);
+                            }}
+                            className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-rose-500/20 text-rose-400 text-left"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-rose-400" strokeWidth={1.75} />
+                            <span>Delete</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -545,7 +714,7 @@ export const TaskSidebar: React.FC = () => {
 
         <div className="border-t border-zinc-200/70 mx-3 my-1" />
 
-        {/* Tags Section (with Edit & Delete) */}
+        {/* Tags Section (with Three-Dots Menu & Helper Card) */}
         <div className="px-2.5 py-2">
           <div className="flex items-center justify-between px-2 mb-1.5">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
@@ -639,59 +808,91 @@ export const TaskSidebar: React.FC = () => {
             </form>
           )}
 
-          <div className="space-y-0.5">
-            {tags.map((tag) => {
-              const isSelected = sidebarSelection.kind === 'tag' && sidebarSelection.id === tag.name;
-              return (
-                <div
-                  key={tag.id}
-                  onClick={() => handleSelectAndCloseOnMobile({ kind: 'tag', id: tag.name })}
-                  className={`group flex items-center justify-between px-2.5 py-1.5 md:py-1 rounded-lg text-xs cursor-pointer ${
-                    isSelected
-                      ? 'bg-zinc-900/[0.06] text-zinc-900 font-semibold'
-                      : 'text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-900'
-                  }`}
-                >
-                  <span className="flex items-center gap-1.5 truncate min-w-0">
-                    <Hash
-                      className="w-3 h-3 shrink-0"
-                      style={{ color: tag.color }}
-                      strokeWidth={1.75}
-                    />
-                    <span className="truncate">{tag.name}</span>
-                  </span>
-                  <div className="flex items-center gap-0.5 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingTagId(tag.id);
-                        setEditingTagName(tag.name);
-                        setEditingTagColor(tag.color);
-                      }}
-                      title={`Edit tag #${tag.name}`}
-                      aria-label={`Edit tag ${tag.name}`}
-                      className="p-1 rounded hover:bg-zinc-200 text-zinc-400 hover:text-zinc-800"
-                    >
-                      <Pencil className="w-3 h-3" strokeWidth={1.75} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteTag(tag.id);
-                      }}
-                      title={`Delete tag #${tag.name}`}
-                      aria-label={`Delete tag ${tag.name}`}
-                      className="p-1 rounded hover:bg-rose-50 text-zinc-400 hover:text-rose-600"
-                    >
-                      <Trash2 className="w-3 h-3" strokeWidth={1.75} />
-                    </button>
+          {tags.length === 0 ? (
+            <div className="mx-1 p-3 rounded-lg bg-zinc-200/50 text-[11px] text-zinc-500 leading-relaxed">
+              Categorize your tasks with tags. Quickly select a tag by typing{' '}
+              <span className="font-mono font-semibold text-zinc-700">'#'</span> when adding a task
+            </div>
+          ) : (
+            <div className="space-y-0.5">
+              {tags.map((tag) => {
+                const isSelected = sidebarSelection.kind === 'tag' && sidebarSelection.id === tag.name;
+                const isTagMenuOpen = openMenu?.kind === 'tag' && openMenu.id === tag.id;
+                return (
+                  <div
+                    key={tag.id}
+                    onClick={() => handleSelectAndCloseOnMobile({ kind: 'tag', id: tag.name })}
+                    className={`relative group flex items-center justify-between px-2.5 py-1.5 md:py-1 rounded-lg text-xs cursor-pointer ${
+                      isSelected
+                        ? 'bg-zinc-900/[0.06] text-zinc-900 font-semibold'
+                        : 'text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-900'
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5 truncate min-w-0">
+                      <Hash
+                        className="w-3 h-3 shrink-0"
+                        style={{ color: tag.color }}
+                        strokeWidth={1.75}
+                      />
+                      <span className="truncate">{tag.name}</span>
+                    </span>
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenMenu(isTagMenuOpen ? null : { kind: 'tag', id: tag.id });
+                        }}
+                        title={`Tag options for #${tag.name}`}
+                        aria-label={`Tag options ${tag.name}`}
+                        className={`p-1 rounded hover:bg-zinc-200/80 text-zinc-400 hover:text-zinc-800 transition-opacity ${
+                          isTagMenuOpen
+                            ? 'opacity-100 bg-zinc-200/80 text-zinc-800'
+                            : 'md:opacity-0 md:group-hover:opacity-100'
+                        }`}
+                      >
+                        <MoreHorizontal className="w-3.5 h-3.5" strokeWidth={1.75} />
+                      </button>
+                    </div>
+
+                    {isTagMenuOpen && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className="absolute right-2 top-7 z-50 w-40 rounded-xl bg-zinc-900 text-zinc-100 shadow-2xl border border-zinc-800 py-1.5 text-xs animate-popover"
+                      >
+                        <button
+                          type="button"
+                          aria-label={`Edit tag ${tag.name}`}
+                          onClick={() => {
+                            setEditingTagId(tag.id);
+                            setEditingTagName(tag.name);
+                            setEditingTagColor(tag.color);
+                            setOpenMenu(null);
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-zinc-800 text-left"
+                        >
+                          <Pencil className="w-3.5 h-3.5 text-zinc-400" strokeWidth={1.75} />
+                          <span>Edit</span>
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Delete tag ${tag.name}`}
+                          onClick={() => {
+                            deleteTag(tag.id);
+                            setOpenMenu(null);
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-rose-500/20 text-rose-400 text-left"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-400" strokeWidth={1.75} />
+                          <span>Delete</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Archive / Completed / Won't Do / Trash & Start Blank */}
@@ -787,96 +988,321 @@ export const TaskSidebar: React.FC = () => {
           </div>
         </div>
 
-        {/* Modal: Create or Edit List */}
+        {/* Rich 2-Column TickTick Modal: Edit List / Add List with Live Preview */}
         {showListModal && (
           <div
             onClick={() => setShowListModal(false)}
-            className="fixed inset-0 z-50 bg-zinc-950/40 backdrop-blur-[2px] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-backdrop"
+            className="fixed inset-0 z-50 bg-zinc-950/50 backdrop-blur-[2px] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-backdrop"
           >
             <form
               onClick={(e) => e.stopPropagation()}
               onSubmit={handleSaveList}
-              className="surface-floating rounded-t-2xl sm:rounded-xl w-full max-w-sm p-5 pb-8 sm:pb-5 space-y-4 animate-sheet-up sm:animate-modal"
+              className="surface-floating rounded-t-2xl sm:rounded-2xl w-full max-w-2xl p-6 pb-8 sm:pb-6 animate-sheet-up sm:animate-modal bg-white border border-zinc-200 shadow-2xl"
             >
-              <div className="sm:hidden w-10 h-1 rounded-full bg-zinc-300 mx-auto -mt-1 mb-2" />
-              <h3 className="text-sm font-semibold text-zinc-900">
-                {editingListId ? 'Edit List' : 'Create New List'}
-              </h3>
-              <div>
-                <label className="block text-xs font-medium text-zinc-600 mb-1">List Name</label>
-                <input
-                  type="text"
-                  required
-                  autoFocus
-                  value={listName}
-                  onChange={(e) => setListName(e.target.value)}
-                  placeholder="e.g. Q1 Product Roadmap"
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-zinc-300 focus:outline-none focus:border-zinc-900"
-                />
-              </div>
+              <div className="sm:hidden w-10 h-1 rounded-full bg-zinc-300 mx-auto -mt-1 mb-3" />
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-zinc-600 mb-1">Folder</label>
-                  <select
-                    value={listFolderId}
-                    onChange={(e) => setListFolderId(e.target.value)}
-                    className="w-full px-2.5 py-2 text-xs rounded-lg border border-zinc-300 bg-white"
-                  >
-                    <option value="">None (Top level)</option>
-                    {folders.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-zinc-600 mb-1">Default View</label>
-                  <select
-                    value={listViewMode}
-                    onChange={(e) => setListViewMode(e.target.value as ViewMode)}
-                    className="w-full px-2.5 py-2 text-xs rounded-lg border border-zinc-300 bg-white"
-                  >
-                    <option value="list">List View</option>
-                    <option value="kanban">Kanban Board</option>
-                    <option value="timeline">Timeline (Gantt)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-zinc-600 mb-1.5">List Color</label>
-                <div className="flex items-center gap-2">
-                  {['#3b66f5', '#10b981', '#f59e0b', '#ef4444', '#6366f1', '#ec4899', '#0ea5e9'].map(
-                    (c) => (
-                      <button
-                        type="button"
-                        key={c}
-                        onClick={() => setListColor(c)}
-                        style={{ backgroundColor: c }}
-                        className={`w-5 h-5 rounded-full ${
-                          listColor === c ? 'ring-2 ring-offset-2 ring-zinc-900' : ''
-                        }`}
-                      />
-                    )
-                  )}
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="text-base font-semibold text-zinc-900">
+                  {editingListId ? 'Edit List' : 'Add List'}
+                </h3>
                 <button
                   type="button"
                   onClick={() => setShowListModal(false)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-600 hover:bg-zinc-100"
+                  aria-label="Close modal"
+                  className="p-1 rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                >
+                  <X className="w-4 h-4" strokeWidth={1.75} />
+                </button>
+              </div>
+
+              {/* 2-Column Body */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-stretch">
+                {/* Left Column: Form Controls */}
+                <div className="md:col-span-7 space-y-4">
+                  {/* Unified Emoji + Name Input */}
+                  <div className="relative flex items-center rounded-lg border border-blue-500 ring-2 ring-blue-500/10 bg-white">
+                    <button
+                      type="button"
+                      onClick={() => setShowEmojiPicker((v) => !v)}
+                      title="Choose list icon"
+                      className="px-3 py-2 border-r border-zinc-200 text-sm hover:bg-zinc-50 flex items-center justify-center shrink-0"
+                    >
+                      {listEmoji || <Smile className="w-4 h-4 text-zinc-400" />}
+                    </button>
+                    <input
+                      type="text"
+                      required
+                      autoFocus
+                      value={listName}
+                      onChange={(e) => setListName(e.target.value)}
+                      placeholder="Name"
+                      className="flex-1 px-3 py-2 text-xs text-zinc-900 focus:outline-none bg-transparent"
+                    />
+
+                    {showEmojiPicker && (
+                      <div className="absolute left-0 top-11 z-20 p-2 rounded-xl bg-white border border-zinc-200 shadow-xl grid grid-cols-6 gap-1 animate-popover">
+                        {LIST_EMOJIS.map((em) => (
+                          <button
+                            key={em}
+                            type="button"
+                            onClick={() => {
+                              setListEmoji(em);
+                              setShowEmojiPicker(false);
+                            }}
+                            className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm hover:bg-zinc-100 ${
+                              listEmoji === em ? 'bg-blue-50 ring-1 ring-blue-500' : ''
+                            }`}
+                          >
+                            {em}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* List Color Swatches */}
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="text-xs font-medium text-zinc-600 shrink-0">List Color</label>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => setListColor('')}
+                        title="No Color"
+                        className={`w-5 h-5 rounded-full flex items-center justify-center border ${
+                          !listColor
+                            ? 'border-zinc-900 text-zinc-900 ring-2 ring-offset-1 ring-zinc-300'
+                            : 'border-zinc-300 text-zinc-400'
+                        }`}
+                      >
+                        <Ban className="w-3 h-3" strokeWidth={2} />
+                      </button>
+                      {LIST_COLOR_PRESETS.map((c) => (
+                        <button
+                          type="button"
+                          key={c}
+                          onClick={() => setListColor(c)}
+                          style={{ backgroundColor: c }}
+                          className={`w-5 h-5 rounded-full transition-transform ${
+                            listColor === c ? 'ring-2 ring-offset-2 ring-zinc-900 scale-105' : ''
+                          }`}
+                        />
+                      ))}
+                      <label
+                        title="Custom Color"
+                        className="w-5 h-5 rounded-full cursor-pointer border border-zinc-300 bg-[conic-gradient(from_90deg,#ef4444,#f59e0b,#10b981,#3b82f6,#8b5cf6,#ef4444)] relative overflow-hidden"
+                      >
+                        <input
+                          type="color"
+                          value={listColor || '#38bdf8'}
+                          onChange={(e) => setListColor(e.target.value)}
+                          className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* View Type Visual Cards (List / Kanban / Timeline with Crown) */}
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="text-xs font-medium text-zinc-600 shrink-0">View Type</label>
+                    <div className="flex items-center gap-2.5">
+                      {(
+                        [
+                          { id: 'list', label: 'List', icon: ListIcon, pro: false },
+                          { id: 'kanban', label: 'Kanban', icon: Columns3, pro: false },
+                          { id: 'timeline', label: 'Timeline', icon: GanttChart, pro: true },
+                        ] as const
+                      ).map((v) => {
+                        const Icon = v.icon;
+                        const active = listViewMode === v.id;
+                        return (
+                          <button
+                            key={v.id}
+                            type="button"
+                            onClick={() => setListViewMode(v.id)}
+                            title={`${v.label} View`}
+                            className={`relative w-14 h-10 rounded-lg border flex items-center justify-center transition-colors ${
+                              active
+                                ? 'border-blue-600 bg-blue-50/70 text-blue-600 ring-1 ring-blue-600/30'
+                                : 'border-zinc-200 bg-zinc-50/60 text-zinc-500 hover:bg-zinc-100'
+                            }`}
+                          >
+                            <Icon className="w-4 h-4" strokeWidth={1.75} />
+                            {v.pro && (
+                              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-amber-100 border border-amber-300 flex items-center justify-center">
+                                <Crown className="w-2.5 h-2.5 text-amber-600 fill-amber-500" />
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Folder Selector */}
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="text-xs font-medium text-zinc-600 shrink-0">Folder</label>
+                    <select
+                      value={listFolderId}
+                      onChange={(e) => setListFolderId(e.target.value)}
+                      className="w-48 px-2.5 py-1.5 text-xs rounded-lg border border-zinc-200 bg-zinc-50/70 text-zinc-700 focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="">None</option>
+                      {folders.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* List Type Selector */}
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="text-xs font-medium text-zinc-600 shrink-0">List Type</label>
+                    <select
+                      value={listType}
+                      onChange={(e) => setListType(e.target.value as 'task' | 'note')}
+                      className="w-48 px-2.5 py-1.5 text-xs rounded-lg border border-zinc-200 bg-zinc-50/70 text-zinc-700 focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="task">Task List</option>
+                      <option value="note">Note List</option>
+                    </select>
+                  </div>
+
+                  {/* Show in Smart List Selector */}
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="text-xs font-medium text-zinc-600 shrink-0">
+                      Show in Smart List
+                    </label>
+                    <select
+                      value={showInSmartList}
+                      onChange={(e) => setShowInSmartList(e.target.value as 'all' | 'hidden')}
+                      className="w-48 px-2.5 py-1.5 text-xs rounded-lg border border-zinc-200 bg-zinc-50/70 text-zinc-700 focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="all">All tasks</option>
+                      <option value="hidden">Do not show</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Right Column: Live Interactive Workspace Preview */}
+                <div className="md:col-span-5 rounded-xl bg-zinc-100/80 border border-zinc-200/80 p-3.5 flex flex-col justify-between select-none">
+                  <div className="rounded-lg bg-white border border-zinc-200/80 p-3 shadow-xs space-y-2.5 flex-1">
+                    {/* Preview Header */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-xs">{listEmoji}</span>
+                        <span className="text-xs font-semibold text-zinc-900 truncate">
+                          {listName.trim() || 'Welcome'}
+                        </span>
+                      </div>
+                      <MoreHorizontal className="w-3.5 h-3.5 text-zinc-300 shrink-0" />
+                    </div>
+
+                    {/* Preview Add Bar */}
+                    <div className="h-5 rounded bg-zinc-100 px-2 flex items-center">
+                      <Plus className="w-2.5 h-2.5 text-zinc-300" />
+                    </div>
+
+                    {/* Dynamic Preview Layout by View Mode */}
+                    {listViewMode === 'list' && (
+                      <div className="space-y-2 pt-1">
+                        <div className="text-[8px] font-semibold uppercase tracking-wider text-zinc-400">
+                          Today
+                        </div>
+                        {[1, 2, 3].map((idx) => (
+                          <div key={idx} className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5 flex-1">
+                              <span
+                                className="w-2.5 h-2.5 rounded-[3px] border"
+                                style={{ borderColor: listColor || '#cbd5e1' }}
+                              />
+                              <div className="h-2 rounded bg-zinc-100 flex-1" />
+                            </div>
+                            <span
+                              className="text-[8px] font-mono-num"
+                              style={{ color: listColor || '#3b82f6' }}
+                            >
+                              Today
+                            </span>
+                          </div>
+                        ))}
+                        <div className="text-[8px] font-semibold uppercase tracking-wider text-zinc-400 pt-1">
+                          Completed
+                        </div>
+                        {[1, 2].map((idx) => (
+                          <div key={idx} className="flex items-center gap-1.5 opacity-60">
+                            <span className="w-2.5 h-2.5 rounded-[3px] bg-zinc-300 flex items-center justify-center text-white">
+                              <Check className="w-2 h-2" />
+                            </span>
+                            <div className="h-2 rounded bg-zinc-100 flex-1" />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {listViewMode === 'kanban' && (
+                      <div className="grid grid-cols-2 gap-2 pt-1">
+                        {['To Do', 'Doing'].map((col) => (
+                          <div key={col} className="rounded bg-zinc-50 p-1.5 space-y-1.5 border border-zinc-100">
+                            <div className="text-[8px] font-semibold text-zinc-400">{col}</div>
+                            {[1, 2].map((card) => (
+                              <div
+                                key={card}
+                                className="p-1.5 rounded bg-white border border-zinc-200/70 space-y-1"
+                              >
+                                <div className="h-1.5 w-3/4 rounded bg-zinc-200" />
+                                <div
+                                  className="h-1 w-1/3 rounded"
+                                  style={{ backgroundColor: listColor || '#38bdf8' }}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {listViewMode === 'timeline' && (
+                      <div className="space-y-2 pt-1">
+                        <div className="grid grid-cols-4 gap-1 text-[8px] text-zinc-400 font-mono-num border-b border-zinc-100 pb-1">
+                          <span>Mon</span>
+                          <span>Tue</span>
+                          <span>Wed</span>
+                          <span>Thu</span>
+                        </div>
+                        {[
+                          { start: 'ml-0 w-2/3', label: 'Phase 1' },
+                          { start: 'ml-4 w-3/4', label: 'Phase 2' },
+                          { start: 'ml-2 w-1/2', label: 'Launch' },
+                        ].map((bar, i) => (
+                          <div key={i} className="h-3.5 flex items-center">
+                            <div
+                              style={{ backgroundColor: listColor || '#38bdf8' }}
+                              className={`h-2.5 rounded ${bar.start} opacity-80`}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex justify-end gap-2.5 pt-5 mt-5 border-t border-zinc-100">
+                <button
+                  type="button"
+                  onClick={() => setShowListModal(false)}
+                  className="px-4 py-1.5 rounded-lg text-xs font-medium text-zinc-600 border border-zinc-200 hover:bg-zinc-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800"
+                  className="px-5 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-xs"
                 >
-                  {editingListId ? 'Save Changes' : 'Create List'}
+                  {editingListId ? 'Save' : 'Create'}
                 </button>
               </div>
             </form>
