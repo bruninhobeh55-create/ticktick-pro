@@ -45,6 +45,8 @@ export const TaskDetailPane: React.FC = () => {
     setActiveModule,
     setActivePomoTaskId,
     setPomoRunning,
+    rightPaneWidth,
+    setRightPaneWidth,
   } = useApp();
 
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
@@ -54,12 +56,49 @@ export const TaskDetailPane: React.FC = () => {
   const [showAttachForm, setShowAttachForm] = useState(false);
   const [activeBottomTab, setActiveBottomTab] = useState<'comments' | 'activity'>('comments');
   const [templateSavedBanner, setTemplateSavedBanner] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
+
+  const handleMouseDownResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    const startX = e.clientX;
+    const startWidth = rightPaneWidth;
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const delta = startX - moveEvent.clientX;
+      setRightPaneWidth(startWidth + delta);
+    };
+
+    const onMouseUp = () => {
+      setIsResizing(false);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
 
   const task = tasks.find((t) => t.id === selectedTaskId);
 
   if (!task) {
     return (
-      <aside className="hidden xl:flex w-96 shrink-0 border-l border-zinc-200/80 bg-zinc-50/40 flex-col items-center justify-center p-6 text-center select-none">
+      <aside
+        style={{ '--right-pane-width': `${rightPaneWidth}px` } as React.CSSProperties}
+        className="hidden xl:flex lg:w-[var(--right-pane-width)] relative shrink-0 border-l border-zinc-200/80 bg-zinc-50/40 flex-col items-center justify-center p-6 text-center select-none"
+      >
+        <div
+          onMouseDown={handleMouseDownResize}
+          title="Drag to resize right inspector"
+          aria-label="Resize Right Inspector"
+          className="hidden lg:flex absolute inset-y-0 -left-1 w-2.5 cursor-col-resize items-center justify-center group z-20"
+        >
+          <div
+            className={`w-[2px] h-10 rounded-full transition-colors ${
+              isResizing ? 'bg-blue-600' : 'bg-transparent group-hover:bg-zinc-400'
+            }`}
+          />
+        </div>
         <div className="w-10 h-10 rounded-xl bg-zinc-100 border border-zinc-200/80 text-zinc-400 flex items-center justify-center mb-3">
           <FileText className="w-5 h-5" strokeWidth={1.75} />
         </div>
@@ -89,8 +128,22 @@ export const TaskDetailPane: React.FC = () => {
 
       <aside
         aria-label="Task Detail Inspector"
-        className="fixed inset-x-0 bottom-0 top-10 z-50 rounded-t-2xl shadow-2xl lg:shadow-none lg:rounded-none lg:static lg:z-10 lg:w-96 xl:w-[400px] shrink-0 border-t lg:border-t-0 lg:border-l border-zinc-200/80 bg-white flex flex-col lg:h-full overflow-hidden animate-sheet-up lg:[animation:none]"
+        style={{ '--right-pane-width': `${rightPaneWidth}px` } as React.CSSProperties}
+        className="fixed inset-x-0 bottom-0 top-10 z-50 rounded-t-2xl shadow-2xl lg:shadow-none lg:rounded-none lg:static lg:z-10 lg:w-[var(--right-pane-width)] relative shrink-0 border-t lg:border-t-0 lg:border-l border-zinc-200/80 bg-white flex flex-col lg:h-full overflow-hidden animate-sheet-up lg:[animation:none]"
       >
+        {/* PC Left-Edge Drag Resize Handle */}
+        <div
+          onMouseDown={handleMouseDownResize}
+          title="Drag to resize right inspector (280px – 680px)"
+          aria-label="Resize Right Inspector"
+          className="hidden lg:flex absolute inset-y-0 left-0 w-2 cursor-col-resize items-center justify-center group z-20 hover:bg-blue-500/10"
+        >
+          <div
+            className={`w-[2px] h-10 rounded-full transition-colors ${
+              isResizing ? 'bg-blue-600' : 'bg-zinc-200/80 group-hover:bg-blue-600'
+            }`}
+          />
+        </div>
         {/* Mobile Vaul Drag Handle */}
         <div
           onClick={() => setSelectedTaskId(null)}

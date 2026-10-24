@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { format } from 'date-fns';
+import React, { useMemo, useState } from 'react';
+import { format, subDays } from 'date-fns';
 import {
   CheckCircle2,
   Clock,
@@ -8,7 +8,9 @@ import {
   Play,
   Plus,
   RotateCcw,
+  Search,
   Settings2,
+  Trash2,
   Volume2,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
@@ -38,6 +40,8 @@ export const PomodoroModule: React.FC = () => {
     completeCurrentPomoSession,
     pomodoroSessions,
     logManualFocusSession,
+    deletePomodoroSession,
+    clearPomodoroSessions,
   } = useApp();
 
   const [sessionNote, setSessionNote] = useState('');
@@ -46,6 +50,29 @@ export const PomodoroModule: React.FC = () => {
   const [manualMinutes, setManualMinutes] = useState(25);
   const [manualNote, setManualNote] = useState('');
   const [showPomoSettings, setShowPomoSettings] = useState(false);
+
+  // Focus Log Filter States
+  const [logRangeFilter, setLogRangeFilter] = useState<'all' | 'today' | '7days'>('all');
+  const [logModeFilter, setLogModeFilter] = useState<'all' | 'pomo' | 'stopwatch'>('all');
+  const [logSearchQuery, setLogSearchQuery] = useState('');
+
+  const filteredSessions = useMemo(() => {
+    const todayPrefix = format(new Date(), 'yyyy-MM-dd');
+    const sevenDaysAgoPrefix = format(subDays(new Date(), 7), 'yyyy-MM-dd');
+    return pomodoroSessions.filter((sess) => {
+      const dateStr = sess.startTime.slice(0, 10);
+      if (logRangeFilter === 'today' && dateStr !== todayPrefix) return false;
+      if (logRangeFilter === '7days' && dateStr < sevenDaysAgoPrefix) return false;
+      if (logModeFilter !== 'all' && sess.mode !== logModeFilter) return false;
+      if (logSearchQuery.trim()) {
+        const q = logSearchQuery.toLowerCase();
+        const matchTitle = sess.taskTitle.toLowerCase().includes(q);
+        const matchNote = (sess.note || '').toLowerCase().includes(q);
+        if (!matchTitle && !matchNote) return false;
+      }
+      return true;
+    });
+  }, [pomodoroSessions, logRangeFilter, logModeFilter, logSearchQuery]);
 
   const openTasks = tasks.filter((t) => t.status !== 'completed' && t.status !== 'trash');
 
@@ -342,40 +369,132 @@ export const PomodoroModule: React.FC = () => {
           </div>
         </div>
 
-        {/* Focus Timeline Log */}
+        {/* Focus Timeline Log with Filters & Delete Actions */}
         <div className="flex-1 flex flex-col min-h-0">
-          <h3 className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-3">
-            Focus Record Log
-          </h3>
-          <div className="space-y-2 overflow-y-auto flex-1 pr-1">
-            {pomodoroSessions.map((sess) => (
-              <div
-                key={sess.id}
-                className="p-3 rounded-xl border border-zinc-200/80 bg-zinc-50/50 space-y-1"
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <h3 className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+              Focus Record Log ({filteredSessions.length}/{pomodoroSessions.length})
+            </h3>
+            {pomodoroSessions.length > 0 && (
+              <button
+                type="button"
+                onClick={clearPomodoroSessions}
+                title="Clear all focus logs"
+                className="text-[10px] font-semibold text-rose-600 hover:text-rose-700 px-1.5 py-0.5 rounded hover:bg-rose-50"
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold text-zinc-800 truncate">
-                    {sess.taskTitle}
-                  </span>
-                  <span className="text-xs font-mono-num font-bold text-zinc-900 shrink-0">
-                    +{sess.durationMinutes}m
-                  </span>
-                </div>
-                {sess.note && <p className="text-[11px] text-zinc-500">{sess.note}</p>}
-                <div className="flex items-center justify-between text-[10px] font-mono-num text-zinc-400 pt-1">
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-3 h-3" strokeWidth={1.75} />
-                    {sess.startTime.slice(0, 10)} ({sess.mode.toUpperCase()})
-                  </span>
-                  {sess.whiteNoiseUsed && (
-                    <span className="inline-flex items-center gap-1">
-                      <Headphones className="w-3 h-3" strokeWidth={1.75} />
-                      {sess.whiteNoiseUsed}
-                    </span>
-                  )}
-                </div>
+                Clear All
+              </button>
+            )}
+          </div>
+
+          {/* Filter Bar: Date Range, Mode (Pomo/Stopwatch), and Search */}
+          <div className="space-y-2 mb-3">
+            <div className="flex flex-wrap items-center justify-between gap-1.5">
+              <div className="inline-flex items-center bg-zinc-100 p-0.5 rounded-lg border border-zinc-200/70">
+                {(
+                  [
+                    ['all', 'All Dates'],
+                    ['today', 'Today'],
+                    ['7days', '7 Days'],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setLogRangeFilter(id)}
+                    className={`px-2 py-0.5 rounded-md text-[10px] font-semibold ${
+                      logRangeFilter === id
+                        ? 'bg-white text-zinc-900 shadow-2xs'
+                        : 'text-zinc-500 hover:text-zinc-800'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
-            ))}
+
+              <div className="inline-flex items-center bg-zinc-100 p-0.5 rounded-lg border border-zinc-200/70">
+                {(
+                  [
+                    ['all', 'All'],
+                    ['pomo', 'Pomo'],
+                    ['stopwatch', 'Stopwatch'],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setLogModeFilter(id)}
+                    className={`px-2 py-0.5 rounded-md text-[10px] font-semibold ${
+                      logModeFilter === id
+                        ? 'bg-white text-zinc-900 shadow-2xs'
+                        : 'text-zinc-500 hover:text-zinc-800'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-50 border border-zinc-200/80">
+              <Search className="w-3 h-3 text-zinc-400 shrink-0" strokeWidth={1.75} />
+              <input
+                type="text"
+                value={logSearchQuery}
+                onChange={(e) => setLogSearchQuery(e.target.value)}
+                placeholder="Filter focus logs by task or note..."
+                className="flex-1 min-w-0 bg-transparent text-[11px] text-zinc-800 placeholder:text-zinc-400 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2 overflow-y-auto flex-1 pr-1">
+            {filteredSessions.length === 0 ? (
+              <div className="text-center py-8 text-xs text-zinc-400">
+                No focus sessions match the active filter.
+              </div>
+            ) : (
+              filteredSessions.map((sess) => (
+                <div
+                  key={sess.id}
+                  className="group p-3 rounded-xl border border-zinc-200/80 bg-zinc-50/50 space-y-1"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-zinc-800 truncate">
+                      {sess.taskTitle}
+                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="text-xs font-mono-num font-bold text-zinc-900">
+                        +{sess.durationMinutes}m
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => deletePomodoroSession(sess.id)}
+                        title="Remove focus log"
+                        aria-label={`Delete focus log ${sess.taskTitle}`}
+                        className="p-1 rounded hover:bg-rose-50 text-zinc-400 hover:text-rose-600"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" strokeWidth={1.75} />
+                      </button>
+                    </div>
+                  </div>
+                  {sess.note && <p className="text-[11px] text-zinc-500">{sess.note}</p>}
+                  <div className="flex items-center justify-between text-[10px] font-mono-num text-zinc-400 pt-1">
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" strokeWidth={1.75} />
+                      {sess.startTime.slice(0, 10)} ({sess.mode.toUpperCase()})
+                    </span>
+                    {sess.whiteNoiseUsed && (
+                      <span className="inline-flex items-center gap-1">
+                        <Headphones className="w-3 h-3" strokeWidth={1.75} />
+                        {sess.whiteNoiseUsed}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>

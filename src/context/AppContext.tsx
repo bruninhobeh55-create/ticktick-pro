@@ -129,15 +129,19 @@ interface AppContextValue {
   updateList: (id: string, patch: Partial<TaskList>) => void;
   deleteList: (id: string) => void;
   addFolder: (name: string) => void;
+  updateFolder: (id: string, name: string) => void;
+  deleteFolder: (id: string) => void;
   toggleFolderCollapse: (id: string) => void;
   addSection: (listId: string, name: string) => TaskSection;
   addTag: (name: string, color: string) => void;
+  updateTag: (id: string, name: string, color: string) => void;
   deleteTag: (id: string) => void;
   addCustomFilter: (filter: Omit<CustomFilter, 'id'>) => void;
   deleteCustomFilter: (id: string) => void;
 
   // Habit Operations
   addHabit: (habit: Omit<Habit, 'id' | 'logs' | 'createdAt'>) => void;
+  updateHabit: (id: string, patch: Partial<Habit>) => void;
   toggleHabitDate: (
     habitId: string,
     dateStr: string,
@@ -145,6 +149,8 @@ interface AppContextValue {
     note?: string,
     mood?: HabitLogEntry['mood']
   ) => void;
+  deleteHabitLog: (habitId: string, dateStr: string) => void;
+  clearHabitLogs: (habitId: string) => void;
   deleteHabit: (id: string) => void;
 
   // Pomodoro & Focus Timer Global State
@@ -171,6 +177,8 @@ interface AppContextValue {
     note: string,
     taskId?: string
   ) => void;
+  deletePomodoroSession: (id: string) => void;
+  clearPomodoroSessions: () => void;
 
   // Countdowns & Calendar Subscriptions
   addCountdown: (item: Omit<CountdownItem, 'id'>) => void;
@@ -183,10 +191,13 @@ interface AppContextValue {
   ) => void;
   toggleCalendarSubscription: (id: string) => void;
 
-  // Preferences & Themes
+  // Preferences, Layout & Workspace Reset
+  rightPaneWidth: number;
+  setRightPaneWidth: (width: number) => void;
   updatePreferences: (patch: Partial<UserPreferences>) => void;
   setTheme: (theme: ThemeId) => void;
   resetDemoWorkspace: () => void;
+  clearAllWorkspaceData: () => void;
 
   // Supabase Backend Sync
   supabaseStatus: 'local_only' | 'connected' | 'syncing' | 'error';
@@ -465,6 +476,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       description: `${taskTitle} (${durationMinutes}m)`,
       kind: 'success',
     });
+  };
+
+  const deletePomodoroSession = (id: string) => {
+    setPomodoroSessions((prev) => prev.filter((s) => s.id !== id));
+    pushToast({ title: 'Focus session log removed', kind: 'info' });
+  };
+
+  const clearPomodoroSessions = () => {
+    setPomodoroSessions([]);
+    pushToast({ title: 'All focus session logs cleared', kind: 'info' });
   };
 
   const addTask = (partial: Partial<Task> & { title: string }): Task => {
@@ -776,14 +797,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateList = (id: string, patch: Partial<TaskList>) => {
     setLists((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
+    pushToast({ title: 'List updated', kind: 'success' });
   };
 
   const deleteList = (id: string) => {
+    const target = lists.find((l) => l.id === id);
     setLists((prev) => prev.filter((l) => l.id !== id));
     setTasks((prev) => prev.map((t) => (t.listId === id ? { ...t, listId: 'inbox' } : t)));
     if (sidebarSelection.kind === 'list' && sidebarSelection.id === id) {
       setSidebarSelection({ kind: 'smart', id: 'inbox' });
     }
+    pushToast({
+      title: target ? `Deleted list "${target.name}"` : 'List deleted',
+      description: 'Tasks moved to Inbox',
+      kind: 'info',
+    });
   };
 
   const addFolder = (name: string) => {
@@ -797,6 +825,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         sortOrder: prev.length,
       },
     ]);
+    pushToast({ title: `Folder "${name.trim()}" created`, kind: 'success' });
+  };
+
+  const updateFolder = (id: string, name: string) => {
+    const clean = name.trim();
+    if (!clean) return;
+    setFolders((prev) => prev.map((f) => (f.id === id ? { ...f, name: clean } : f)));
+    pushToast({ title: `Folder renamed to "${clean}"`, kind: 'success' });
+  };
+
+  const deleteFolder = (id: string) => {
+    const target = folders.find((f) => f.id === id);
+    setFolders((prev) => prev.filter((f) => f.id !== id));
+    setLists((prev) =>
+      prev.map((l) => (l.folderId === id ? { ...l, folderId: undefined } : l))
+    );
+    pushToast({
+      title: target ? `Deleted folder "${target.name}"` : 'Folder deleted',
+      description: 'Lists inside were moved to root',
+      kind: 'info',
+    });
   };
 
   const toggleFolderCollapse = (id: string) => {
@@ -823,6 +872,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (prev.some((t) => t.name === clean)) return prev;
       return [...prev, { id: `tag-${Date.now()}`, name: clean, color }];
     });
+    pushToast({ title: `Tag #${clean} created`, kind: 'success' });
+  };
+
+  const updateTag = (id: string, name: string, color: string) => {
+    const clean = name.trim().replace(/^#/, '').toLowerCase();
+    if (!clean) return;
+    const oldTag = tags.find((t) => t.id === id);
+    setTags((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, name: clean, color } : t))
+    );
+    if (oldTag && oldTag.name !== clean) {
+      setTasks((prev) =>
+        prev.map((task) => ({
+          ...task,
+          tags: task.tags.map((tg) => (tg === oldTag.name ? clean : tg)),
+        }))
+      );
+      if (sidebarSelection.kind === 'tag' && sidebarSelection.id === oldTag.name) {
+        setSidebarSelection({ kind: 'tag', id: clean });
+      }
+    }
+    pushToast({ title: `Tag updated to #${clean}`, kind: 'success' });
   };
 
   const deleteTag = (id: string) => {
@@ -835,6 +906,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           tags: task.tags.filter((tg) => tg !== target.name),
         }))
       );
+      if (sidebarSelection.kind === 'tag' && sidebarSelection.id === target.name) {
+        setSidebarSelection({ kind: 'smart', id: 'today' });
+      }
+      pushToast({ title: `Deleted tag #${target.name}`, kind: 'info' });
     }
   };
 
@@ -845,6 +920,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteCustomFilter = (id: string) => {
     setCustomFilters((prev) => prev.filter((f) => f.id !== id));
+    if (sidebarSelection.kind === 'filter' && sidebarSelection.id === id) {
+      setSidebarSelection({ kind: 'smart', id: 'today' });
+    }
+    pushToast({ title: 'Filter removed', kind: 'info' });
   };
 
   const addHabit = (habit: Omit<Habit, 'id' | 'logs' | 'createdAt'>) => {
@@ -856,6 +935,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setHabits((prev) => [...prev, newHabit]);
     pushToast({ title: `Habit "${habit.name}" added`, kind: 'success' });
+  };
+
+  const updateHabit = (id: string, patch: Partial<Habit>) => {
+    setHabits((prev) => prev.map((h) => (h.id === id ? { ...h, ...patch } : h)));
+    pushToast({ title: 'Habit updated', kind: 'success' });
+  };
+
+  const deleteHabitLog = (habitId: string, dateStr: string) => {
+    setHabits((prev) =>
+      prev.map((habit) => {
+        if (habit.id !== habitId) return habit;
+        const nextLogs = { ...habit.logs };
+        delete nextLogs[dateStr];
+        return { ...habit, logs: nextLogs };
+      })
+    );
+    pushToast({ title: `Removed habit check-in for ${dateStr}`, kind: 'info' });
+  };
+
+  const clearHabitLogs = (habitId: string) => {
+    setHabits((prev) =>
+      prev.map((habit) => (habit.id === habitId ? { ...habit, logs: {} } : habit))
+    );
+    pushToast({ title: 'Cleared habit check-in history', kind: 'info' });
   };
 
   const toggleHabitDate = (
@@ -977,6 +1080,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsSettingsOpen(true);
   };
 
+  const [rightPaneWidth, setRightPaneWidthState] = useState<number>(() => {
+    const saved = typeof window !== 'undefined' ? Number(localStorage.getItem('ticktick_v2_right_pane_width')) : 0;
+    return saved >= 280 && saved <= 680 ? saved : 392;
+  });
+
+  const setRightPaneWidth = useCallback((width: number) => {
+    const clamped = Math.max(280, Math.min(680, Math.round(width)));
+    setRightPaneWidthState(clamped);
+    try {
+      localStorage.setItem('ticktick_v2_right_pane_width', String(clamped));
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const resetDemoWorkspace = () => {
     setTasks(INITIAL_TASKS);
     setLists(INITIAL_LISTS);
@@ -991,6 +1109,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCalendarSubscriptions(INITIAL_CALENDAR_SUBSCRIPTIONS);
     setPreferences(INITIAL_PREFERENCES);
     pushToast({ title: 'Sample workspace restored', kind: 'info' });
+  };
+
+  const clearAllWorkspaceData = () => {
+    setTasks([]);
+    setLists([]);
+    setFolders([]);
+    setSections([]);
+    setTags([]);
+    setCustomFilters([]);
+    setHabits([]);
+    setPomodoroSessions([]);
+    setCountdowns([]);
+    setTemplates([]);
+    setCalendarSubscriptions([]);
+    setSelectedTaskId(null);
+    setActivePomoTaskId(null);
+    setSidebarSelection({ kind: 'smart', id: 'inbox' });
+    setPreferences((prev) => ({ ...prev, achievementScore: 0 }));
+    pushToast({
+      title: 'Workspace reset to blank slate',
+      description: 'All demo tasks, lists, folders, tags, habits & focus logs cleared.',
+      kind: 'success',
+    });
   };
 
   // Supabase connection & real-time cross-device sync state
@@ -1065,12 +1206,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
       setTasks(snap.tasks);
-      if (Array.isArray(snap.lists) && snap.lists.length > 0) setLists(snap.lists);
-      if (Array.isArray(snap.folders) && snap.folders.length > 0) setFolders(snap.folders);
-      if (Array.isArray(snap.sections) && snap.sections.length > 0) setSections(snap.sections);
-      if (Array.isArray(snap.tags) && snap.tags.length > 0) setTags(snap.tags);
-      if (Array.isArray(snap.habits) && snap.habits.length > 0) setHabits(snap.habits);
-      if (Array.isArray(snap.countdowns) && snap.countdowns.length > 0) {
+      if (Array.isArray(snap.lists)) setLists(snap.lists);
+      if (Array.isArray(snap.folders)) setFolders(snap.folders);
+      if (Array.isArray(snap.sections)) setSections(snap.sections);
+      if (Array.isArray(snap.tags)) setTags(snap.tags);
+      if (Array.isArray(snap.habits)) setHabits(snap.habits);
+      if (Array.isArray(snap.countdowns)) {
         setCountdowns(snap.countdowns);
       }
 
@@ -1507,14 +1648,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updateList,
       deleteList,
       addFolder,
+      updateFolder,
+      deleteFolder,
       toggleFolderCollapse,
       addSection,
       addTag,
+      updateTag,
       deleteTag,
       addCustomFilter,
       deleteCustomFilter,
       addHabit,
+      updateHabit,
       toggleHabitDate,
+      deleteHabitLog,
+      clearHabitLogs,
       deleteHabit,
       pomoMode,
       setPomoMode,
@@ -1533,13 +1680,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       resetPomoTimer,
       completeCurrentPomoSession,
       logManualFocusSession,
+      deletePomodoroSession,
+      clearPomodoroSessions,
       addCountdown,
       deleteCountdown,
       addCalendarSubscription,
       toggleCalendarSubscription,
+      rightPaneWidth,
+      setRightPaneWidth,
       updatePreferences,
       setTheme,
       resetDemoWorkspace,
+      clearAllWorkspaceData,
       supabaseStatus,
       supabaseUserEmail,
       supabaseLastSyncedAt,
@@ -1580,6 +1732,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       activePomoTaskId,
       activeWhiteNoise,
       whiteNoiseVolume,
+      rightPaneWidth,
+      setRightPaneWidth,
       supabaseStatus,
       supabaseUserEmail,
       supabaseLastSyncedAt,

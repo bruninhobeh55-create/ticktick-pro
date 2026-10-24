@@ -5,6 +5,7 @@ import {
   Check,
   Flame,
   MessageSquarePlus,
+  Pencil,
   Plus,
   Sparkles,
   Trash2,
@@ -14,10 +15,21 @@ import { Habit, HabitLogEntry } from '../types';
 import { HABIT_ICON_KEYS, UiIcon } from './UiIcon';
 
 export const HabitTrackerModule: React.FC = () => {
-  const { habits, addHabit, toggleHabitDate, deleteHabit } = useApp();
+  const {
+    habits,
+    addHabit,
+    updateHabit,
+    toggleHabitDate,
+    deleteHabitLog,
+    clearHabitLogs,
+    deleteHabit,
+    rightPaneWidth,
+    setRightPaneWidth,
+  } = useApp();
 
   const [selectedHabitId, setSelectedHabitId] = useState<string | null>(habits[0]?.id || null);
   const [showNewModal, setShowNewModal] = useState(false);
+  const [editingHabitId, setEditingHabitId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [quote, setQuote] = useState('');
   const [icon, setIcon] = useState('flame');
@@ -26,6 +38,28 @@ export const HabitTrackerModule: React.FC = () => {
   const [goalType, setGoalType] = useState<Habit['goalType']>('check');
   const [targetValue, setTargetValue] = useState(1);
   const [unit, setUnit] = useState('times');
+
+  // Habit Log Filter State
+  const [habitLogRange, setHabitLogRange] = useState<'all' | '7days' | '30days'>('all');
+  const [habitMoodFilter, setHabitMoodFilter] = useState<'all' | 'great' | 'good' | 'neutral' | 'tired'>('all');
+  const [isResizing, setIsResizing] = useState(false);
+
+  const handleMouseDownResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    const startX = e.clientX;
+    const startWidth = rightPaneWidth;
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      setRightPaneWidth(startWidth + (startX - moveEvent.clientX));
+    };
+    const onMouseUp = () => {
+      setIsResizing(false);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
 
   const [logModalTarget, setLogModalTarget] = useState<{ habitId: string; dateStr: string } | null>(
     null
@@ -55,25 +89,52 @@ export const HabitTrackerModule: React.FC = () => {
 
   const selectedHabit = habits.find((h) => h.id === selectedHabitId) || habits[0];
 
+  const openEditHabitModal = (habit: Habit) => {
+    setEditingHabitId(habit.id);
+    setName(habit.name);
+    setQuote(habit.quote);
+    setIcon(habit.icon);
+    setColor(habit.color);
+    setSection(habit.section);
+    setGoalType(habit.goalType);
+    setTargetValue(habit.targetValue);
+    setUnit(habit.unit);
+    setShowNewModal(true);
+  };
+
   const handleCreateHabit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    addHabit({
-      name: name.trim(),
-      quote: quote.trim() || 'Small daily improvements lead to lasting compound results.',
-      icon,
-      color,
-      section,
-      frequencyType: 'daily',
-      frequencyDays: [0, 1, 2, 3, 4, 5, 6],
-      frequencyCount: 7,
-      goalType,
-      targetValue: goalType === 'check' ? 1 : targetValue,
-      unit: goalType === 'check' ? 'times' : unit,
-      autoPopLog: true,
-    });
+    if (editingHabitId) {
+      updateHabit(editingHabitId, {
+        name: name.trim(),
+        quote: quote.trim() || 'Small daily improvements lead to lasting compound results.',
+        icon,
+        color,
+        section,
+        goalType,
+        targetValue: goalType === 'check' ? 1 : targetValue,
+        unit: goalType === 'check' ? 'times' : unit,
+      });
+    } else {
+      addHabit({
+        name: name.trim(),
+        quote: quote.trim() || 'Small daily improvements lead to lasting compound results.',
+        icon,
+        color,
+        section,
+        frequencyType: 'daily',
+        frequencyDays: [0, 1, 2, 3, 4, 5, 6],
+        frequencyCount: 7,
+        goalType,
+        targetValue: goalType === 'check' ? 1 : targetValue,
+        unit: goalType === 'check' ? 'times' : unit,
+        autoPopLog: true,
+      });
+    }
     setName('');
     setQuote('');
+    setEditingHabitId(null);
     setShowNewModal(false);
   };
 
@@ -99,7 +160,12 @@ export const HabitTrackerModule: React.FC = () => {
             </p>
           </div>
           <button
-            onClick={() => setShowNewModal(true)}
+            onClick={() => {
+              setEditingHabitId(null);
+              setName('');
+              setQuote('');
+              setShowNewModal(true);
+            }}
             className="inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-semibold shrink-0"
           >
             <Plus className="w-3.5 h-3.5" strokeWidth={1.75} /> New Habit
@@ -243,27 +309,53 @@ export const HabitTrackerModule: React.FC = () => {
 
       {/* Right Column: Selected Habit Statistics, Streak & Mood/Thought Log */}
       {selectedHabit && (
-        <aside className="w-full lg:w-96 border-t lg:border-t-0 lg:border-l border-zinc-200/80 bg-zinc-50/50 p-4 sm:p-6 flex flex-col space-y-5 lg:overflow-y-auto shrink-0">
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-3">
+        <aside
+          style={{ '--right-pane-width': `${rightPaneWidth}px` } as React.CSSProperties}
+          className="w-full lg:w-[var(--right-pane-width)] relative border-t lg:border-t-0 lg:border-l border-zinc-200/80 bg-zinc-50/50 p-4 sm:p-6 flex flex-col space-y-5 lg:overflow-y-auto shrink-0"
+        >
+          {/* PC Left-Edge Drag Resize Handle */}
+          <div
+            onMouseDown={handleMouseDownResize}
+            title="Drag to resize right inspector (280px – 680px)"
+            aria-label="Resize Habit Inspector"
+            className="hidden lg:flex absolute inset-y-0 left-0 w-2 cursor-col-resize items-center justify-center group z-20 hover:bg-blue-500/10"
+          >
+            <div
+              className={`w-[2px] h-10 rounded-full transition-colors ${
+                isResizing ? 'bg-blue-600' : 'bg-zinc-200/80 group-hover:bg-blue-600'
+              }`}
+            />
+          </div>
+
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-3 min-w-0">
               <span
                 style={{ backgroundColor: `${selectedHabit.color}18`, color: selectedHabit.color }}
-                className="w-10 h-10 rounded-xl flex items-center justify-center border border-black/[0.04]"
+                className="w-10 h-10 rounded-xl flex items-center justify-center border border-black/[0.04] shrink-0"
               >
                 <UiIcon name={selectedHabit.icon} className="w-5 h-5" />
               </span>
-              <div>
-                <h2 className="text-sm font-semibold text-zinc-900">{selectedHabit.name}</h2>
-                <p className="text-[11px] text-zinc-500 italic">"{selectedHabit.quote}"</p>
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold text-zinc-900 truncate">{selectedHabit.name}</h2>
+                <p className="text-[11px] text-zinc-500 italic truncate">"{selectedHabit.quote}"</p>
               </div>
             </div>
-            <button
-              onClick={() => deleteHabit(selectedHabit.id)}
-              title="Delete Habit"
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-rose-600 hover:bg-rose-50"
-            >
-              <Trash2 className="w-4 h-4" strokeWidth={1.75} />
-            </button>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                onClick={() => openEditHabitModal(selectedHabit)}
+                title="Edit Habit"
+                className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-800 hover:bg-zinc-200/60"
+              >
+                <Pencil className="w-4 h-4" strokeWidth={1.75} />
+              </button>
+              <button
+                onClick={() => deleteHabit(selectedHabit.id)}
+                title="Delete Habit"
+                className="p-1.5 rounded-lg text-zinc-400 hover:text-rose-600 hover:bg-rose-50"
+              >
+                <Trash2 className="w-4 h-4" strokeWidth={1.75} />
+              </button>
+            </div>
           </div>
 
           {/* Stats Grid */}
@@ -295,12 +387,24 @@ export const HabitTrackerModule: React.FC = () => {
                 <Sparkles className="w-3.5 h-3.5 text-zinc-600" strokeWidth={1.75} />
                 Today ({todayStr})
               </span>
-              <button
-                onClick={() => setLogModalTarget({ habitId: selectedHabit.id, dateStr: todayStr })}
-                className="text-[11px] text-zinc-700 font-semibold hover:text-zinc-900 flex items-center gap-1"
-              >
-                <MessageSquarePlus className="w-3 h-3" strokeWidth={1.75} /> Log Reflection
-              </button>
+              <div className="flex items-center gap-2">
+                {selectedHabit.logs[todayStr] && (
+                  <button
+                    type="button"
+                    onClick={() => deleteHabitLog(selectedHabit.id, todayStr)}
+                    title="Remove today's check-in"
+                    className="text-[11px] text-rose-600 font-semibold hover:text-rose-700 flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3 h-3" strokeWidth={1.75} /> Remove
+                  </button>
+                )}
+                <button
+                  onClick={() => setLogModalTarget({ habitId: selectedHabit.id, dateStr: todayStr })}
+                  className="text-[11px] text-zinc-700 font-semibold hover:text-zinc-900 flex items-center gap-1"
+                >
+                  <MessageSquarePlus className="w-3 h-3" strokeWidth={1.75} /> Log Reflection
+                </button>
+              </div>
             </div>
 
             {selectedHabit.goalType === 'quantified' ? (
@@ -339,28 +443,110 @@ export const HabitTrackerModule: React.FC = () => {
             )}
           </div>
 
-          {/* Habit Check-in Journal Logs */}
-          <div className="space-y-2">
-            <h3 className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-              Habit Journal & Mood Logs
-            </h3>
-            {Object.entries(selectedHabit.logs)
-              .sort(([a], [b]) => b.localeCompare(a))
-              .slice(0, 8)
-              .map(([dateKey, log]) => (
+          {/* Habit Check-in Journal Logs with Filters & Delete Actions */}
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                Habit Journal & Mood Logs ({Object.keys(selectedHabit.logs).length})
+              </h3>
+              {Object.keys(selectedHabit.logs).length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => clearHabitLogs(selectedHabit.id)}
+                  className="text-[10px] font-semibold text-rose-600 hover:text-rose-700 px-1.5 py-0.5 rounded hover:bg-rose-50"
+                >
+                  Clear History
+                </button>
+              )}
+            </div>
+
+            {/* Filter Bar: Date Range & Mood */}
+            <div className="flex flex-wrap items-center justify-between gap-1.5">
+              <div className="inline-flex items-center bg-zinc-100 p-0.5 rounded-lg border border-zinc-200/70">
+                {(
+                  [
+                    ['all', 'All'],
+                    ['7days', '7 Days'],
+                    ['30days', '30 Days'],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setHabitLogRange(id)}
+                    className={`px-2 py-0.5 rounded-md text-[10px] font-semibold ${
+                      habitLogRange === id
+                        ? 'bg-white text-zinc-900 shadow-2xs'
+                        : 'text-zinc-500 hover:text-zinc-800'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <select
+                aria-label="Filter habit logs by mood"
+                value={habitMoodFilter}
+                onChange={(e) => setHabitMoodFilter(e.target.value as typeof habitMoodFilter)}
+                className="text-[10px] font-semibold px-2 py-1 rounded-lg border border-zinc-200/80 bg-white text-zinc-700 focus:outline-none"
+              >
+                <option value="all">All Moods</option>
+                <option value="great">Great</option>
+                <option value="good">Good</option>
+                <option value="neutral">Neutral</option>
+                <option value="tired">Tired</option>
+              </select>
+            </div>
+
+            {(() => {
+              const cutoff7 = format(subDays(today, 7), 'yyyy-MM-dd');
+              const cutoff30 = format(subDays(today, 30), 'yyyy-MM-dd');
+              const filteredLogs = Object.entries(selectedHabit.logs)
+                .filter(([dateKey, log]) => {
+                  if (habitLogRange === '7days' && dateKey < cutoff7) return false;
+                  if (habitLogRange === '30days' && dateKey < cutoff30) return false;
+                  if (habitMoodFilter !== 'all' && (log.mood || 'great') !== habitMoodFilter) {
+                    return false;
+                  }
+                  return true;
+                })
+                .sort(([a], [b]) => b.localeCompare(a));
+
+              if (filteredLogs.length === 0) {
+                return (
+                  <div className="text-center py-6 text-xs text-zinc-400 bg-white rounded-xl border border-zinc-200/70">
+                    No habit logs match the active filter.
+                  </div>
+                );
+              }
+
+              return filteredLogs.map(([dateKey, log]) => (
                 <div
                   key={dateKey}
-                  className="p-3 rounded-xl bg-white border border-zinc-200/80 text-xs space-y-1"
+                  className="group p-3 rounded-xl bg-white border border-zinc-200/80 text-xs space-y-1"
                 >
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <span className="font-mono-num font-semibold text-zinc-700">{dateKey}</span>
-                    <span className="text-[11px] font-mono-num px-2 py-0.5 rounded-md bg-zinc-100 text-zinc-700 font-medium capitalize">
-                      {log.value} {selectedHabit.unit} • {log.mood || 'great'}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-mono-num px-2 py-0.5 rounded-md bg-zinc-100 text-zinc-700 font-medium capitalize">
+                        {log.value} {selectedHabit.unit} • {log.mood || 'great'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => deleteHabitLog(selectedHabit.id, dateKey)}
+                        title={`Delete habit log for ${dateKey}`}
+                        aria-label={`Delete habit log ${dateKey}`}
+                        className="p-1 rounded hover:bg-rose-50 text-zinc-400 hover:text-rose-600"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" strokeWidth={1.75} />
+                      </button>
+                    </div>
                   </div>
                   {log.note && <p className="text-zinc-500">{log.note}</p>}
                 </div>
-              ))}
+              ));
+            })()}
           </div>
         </aside>
       )}
@@ -376,7 +562,9 @@ export const HabitTrackerModule: React.FC = () => {
             onSubmit={handleCreateHabit}
             className="surface-floating rounded-xl w-full max-w-md p-5 space-y-4 animate-modal"
           >
-            <h3 className="text-sm font-semibold text-zinc-900">Create New Habit</h3>
+            <h3 className="text-sm font-semibold text-zinc-900">
+              {editingHabitId ? 'Edit Habit' : 'Create New Habit'}
+            </h3>
             <div>
               <label className="block text-xs font-medium text-zinc-600 mb-1">Habit Name</label>
               <input
@@ -507,7 +695,7 @@ export const HabitTrackerModule: React.FC = () => {
                 type="submit"
                 className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-zinc-900 text-white hover:bg-zinc-800"
               >
-                Create Habit
+                {editingHabitId ? 'Save Changes' : 'Create Habit'}
               </button>
             </div>
           </form>

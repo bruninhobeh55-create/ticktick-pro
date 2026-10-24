@@ -26,6 +26,7 @@ export const SettingsAndSupabaseModal: React.FC = () => {
     updatePreferences,
     setTheme,
     resetDemoWorkspace,
+    clearAllWorkspaceData,
     supabaseStatus,
     supabaseLastSyncedAt,
     supabaseErrorMessage,
@@ -159,11 +160,31 @@ export const SettingsAndSupabaseModal: React.FC = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-between p-3.5 rounded-xl bg-rose-50/50 border border-rose-200/80">
+              <div className="flex items-center justify-between p-3.5 rounded-xl bg-rose-50/70 border border-rose-200/80 gap-3">
                 <div>
-                  <div className="text-xs font-semibold text-rose-900">Reset Sample Workspace</div>
+                  <div className="text-xs font-semibold text-rose-900">
+                    Start Blank (Clear All Data)
+                  </div>
                   <div className="text-[11px] text-rose-700">
-                    Restore all default demo tasks, habits, Pomodoro logs, and lists
+                    Wipe all tasks, lists, folders, tags, habits, and focus logs to start fresh from an empty workspace
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    clearAllWorkspaceData();
+                    setIsSettingsOpen(false);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold flex items-center gap-1 shrink-0"
+                >
+                  Start Blank
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between p-3.5 rounded-xl bg-zinc-50 border border-zinc-200/80 gap-3">
+                <div>
+                  <div className="text-xs font-semibold text-zinc-900">Restore Demo Workspace</div>
+                  <div className="text-[11px] text-zinc-500">
+                    Restore sample demo tasks, habits, Pomodoro logs, and lists
                   </div>
                 </div>
                 <button
@@ -171,9 +192,9 @@ export const SettingsAndSupabaseModal: React.FC = () => {
                     resetDemoWorkspace();
                     setIsSettingsOpen(false);
                   }}
-                  className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold flex items-center gap-1"
+                  className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-semibold flex items-center gap-1 shrink-0"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" strokeWidth={1.75} /> Reset Data
+                  <RefreshCw className="w-3.5 h-3.5" strokeWidth={1.75} /> Restore Demo
                 </button>
               </div>
             </div>

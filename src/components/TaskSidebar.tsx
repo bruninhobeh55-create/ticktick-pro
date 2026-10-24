@@ -4,15 +4,18 @@ import {
   Calendar,
   CalendarClock,
   CalendarDays,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Eraser,
   FileText,
   Filter,
   FolderPlus,
   Hash,
   Inbox,
   Layers,
+  Pencil,
   Plus,
   Trash2,
   UserCheck,
@@ -20,7 +23,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { ActiveSidebarSelection, useApp } from '../context/AppContext';
-import { Priority, SmartListId, ViewMode } from '../types';
+import { Priority, SmartListId, TaskList, ViewMode } from '../types';
 
 export const TaskSidebar: React.FC = () => {
   const {
@@ -32,31 +35,53 @@ export const TaskSidebar: React.FC = () => {
     tags,
     customFilters,
     addList,
+    updateList,
+    deleteList,
     addFolder,
+    updateFolder,
+    deleteFolder,
     toggleFolderCollapse,
     addTag,
+    updateTag,
+    deleteTag,
     addCustomFilter,
     deleteCustomFilter,
+    clearAllWorkspaceData,
     isSidebarCollapsed,
     setIsSidebarCollapsed,
   } = useApp();
 
-  const [showNewListModal, setShowNewListModal] = useState(false);
-  const [newListName, setNewListName] = useState('');
-  const [newListColor, setNewListColor] = useState('#3b66f5');
-  const [newListFolderId, setNewListFolderId] = useState<string>('');
-  const [newListViewMode, setNewListViewMode] = useState<ViewMode>('list');
+  // Create / Edit List Modal State
+  const [showListModal, setShowListModal] = useState(false);
+  const [editingListId, setEditingListId] = useState<string | null>(null);
+  const [listName, setListName] = useState('');
+  const [listColor, setListColor] = useState('#3b66f5');
+  const [listFolderId, setListFolderId] = useState<string>('');
+  const [listViewMode, setListViewMode] = useState<ViewMode>('list');
 
+  // Create / Edit Folder State
   const [showNewFolderInput, setShowNewFolderInput] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
+  const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
+  const [editingFolderName, setEditingFolderName] = useState('');
 
+  // Create / Edit Tag State
   const [showNewTagInput, setShowNewTagInput] = useState(false);
   const [newTagName, setNewTagName] = useState('');
+  const [editingTagId, setEditingTagId] = useState<string | null>(null);
+  const [editingTagName, setEditingTagName] = useState('');
+  const [editingTagColor, setEditingTagColor] = useState('#3b66f5');
 
+  // Create Smart Filter Modal State
   const [showNewFilterModal, setShowNewFilterModal] = useState(false);
   const [filterName, setFilterName] = useState('');
   const [filterPriority, setFilterPriority] = useState<Priority | 'all'>('all');
-  const [filterDateRange, setFilterDateRange] = useState<'any' | 'today' | 'overdue' | 'next7days'>('any');
+  const [filterDateRange, setFilterDateRange] = useState<
+    'any' | 'today' | 'overdue' | 'next7days'
+  >('any');
+
+  // Blank Workspace Confirmation State
+  const [confirmBlankReset, setConfirmBlankReset] = useState(false);
 
   if (isSidebarCollapsed) return null;
 
@@ -67,68 +92,47 @@ export const TaskSidebar: React.FC = () => {
     }
   };
 
-  const today = startOfToday();
-  const todayStr = format(today, 'yyyy-MM-dd');
-  const tomorrowStr = format(addDays(today, 1), 'yyyy-MM-dd');
-  const next7Str = format(addDays(today, 7), 'yyyy-MM-dd');
-
-  const activeTasks = tasks.filter(
-    (t) => t.status !== 'completed' && t.status !== 'trash' && t.status !== 'wont_do'
-  );
-
-  const counts = {
-    all: activeTasks.length,
-    today: activeTasks.filter(
-      (t) => t.dueDate && (t.dueDate === todayStr || isBefore(parseISO(t.dueDate), today))
-    ).length,
-    tomorrow: activeTasks.filter((t) => t.dueDate === tomorrowStr).length,
-    next7days: activeTasks.filter((t) => t.dueDate && t.dueDate >= todayStr && t.dueDate <= next7Str)
-      .length,
-    inbox: activeTasks.filter((t) => t.listId === 'inbox').length,
-    assigned: activeTasks.filter((t) => Boolean(t.assignee)).length,
+  const openCreateListModal = () => {
+    setEditingListId(null);
+    setListName('');
+    setListColor('#3b66f5');
+    setListFolderId('');
+    setListViewMode('list');
+    setShowListModal(true);
   };
 
-  const smartItems: { id: SmartListId; label: string; icon: React.ReactNode; count?: number }[] = [
-    { id: 'all', label: 'All Tasks', icon: <Layers className="w-4 h-4 text-zinc-500" strokeWidth={1.75} />, count: counts.all },
-    { id: 'today', label: 'Today', icon: <Calendar className="w-4 h-4 text-blue-600" strokeWidth={1.75} />, count: counts.today },
-    {
-      id: 'tomorrow',
-      label: 'Tomorrow',
-      icon: <CalendarClock className="w-4 h-4 text-amber-600" strokeWidth={1.75} />,
-      count: counts.tomorrow,
-    },
-    {
-      id: 'next7days',
-      label: 'Next 7 Days',
-      icon: <CalendarDays className="w-4 h-4 text-zinc-600" strokeWidth={1.75} />,
-      count: counts.next7days,
-    },
-    { id: 'inbox', label: 'Inbox', icon: <Inbox className="w-4 h-4 text-sky-600" strokeWidth={1.75} />, count: counts.inbox },
-    {
-      id: 'assigned',
-      label: 'Assigned to Me',
-      icon: <UserCheck className="w-4 h-4 text-emerald-600" strokeWidth={1.75} />,
-      count: counts.assigned,
-    },
-    {
-      id: 'summary',
-      label: 'Smart Summary',
-      icon: <FileText className="w-4 h-4 text-zinc-600" strokeWidth={1.75} />,
-    },
-  ];
+  const openEditListModal = (list: TaskList, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingListId(list.id);
+    setListName(list.name);
+    setListColor(list.color);
+    setListFolderId(list.folderId || '');
+    setListViewMode(list.viewMode);
+    setShowListModal(true);
+  };
 
-  const handleCreateList = (e: React.FormEvent) => {
+  const handleSaveList = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newListName.trim()) return;
-    const created = addList(
-      newListName,
-      newListColor,
-      newListFolderId || undefined,
-      newListViewMode
-    );
-    handleSelectAndCloseOnMobile({ kind: 'list', id: created.id });
-    setNewListName('');
-    setShowNewListModal(false);
+    if (!listName.trim()) return;
+    if (editingListId) {
+      updateList(editingListId, {
+        name: listName.trim(),
+        color: listColor,
+        folderId: listFolderId || undefined,
+        viewMode: listViewMode,
+      });
+    } else {
+      const created = addList(
+        listName,
+        listColor,
+        listFolderId || undefined,
+        listViewMode
+      );
+      handleSelectAndCloseOnMobile({ kind: 'list', id: created.id });
+    }
+    setListName('');
+    setEditingListId(null);
+    setShowListModal(false);
   };
 
   const handleCreateFilter = (e: React.FormEvent) => {
@@ -149,7 +153,132 @@ export const TaskSidebar: React.FC = () => {
     setShowNewFilterModal(false);
   };
 
+  const today = startOfToday();
+  const todayStr = format(today, 'yyyy-MM-dd');
+  const tomorrowStr = format(addDays(today, 1), 'yyyy-MM-dd');
+  const next7Str = format(addDays(today, 7), 'yyyy-MM-dd');
+
+  const activeTasks = tasks.filter(
+    (t) => t.status !== 'completed' && t.status !== 'trash' && t.status !== 'wont_do'
+  );
+
+  const counts = {
+    all: activeTasks.length,
+    today: activeTasks.filter(
+      (t) => t.dueDate && (t.dueDate === todayStr || isBefore(parseISO(t.dueDate), today))
+    ).length,
+    tomorrow: activeTasks.filter((t) => t.dueDate === tomorrowStr).length,
+    next7days: activeTasks.filter(
+      (t) => t.dueDate && t.dueDate >= todayStr && t.dueDate <= next7Str
+    ).length,
+    inbox: activeTasks.filter((t) => t.listId === 'inbox').length,
+    assigned: activeTasks.filter((t) => Boolean(t.assignee)).length,
+  };
+
+  const smartItems: { id: SmartListId; label: string; icon: React.ReactNode; count?: number }[] = [
+    {
+      id: 'all',
+      label: 'All Tasks',
+      icon: <Layers className="w-4 h-4 text-zinc-500" strokeWidth={1.75} />,
+      count: counts.all,
+    },
+    {
+      id: 'today',
+      label: 'Today',
+      icon: <Calendar className="w-4 h-4 text-blue-600" strokeWidth={1.75} />,
+      count: counts.today,
+    },
+    {
+      id: 'tomorrow',
+      label: 'Tomorrow',
+      icon: <CalendarClock className="w-4 h-4 text-amber-600" strokeWidth={1.75} />,
+      count: counts.tomorrow,
+    },
+    {
+      id: 'next7days',
+      label: 'Next 7 Days',
+      icon: <CalendarDays className="w-4 h-4 text-zinc-600" strokeWidth={1.75} />,
+      count: counts.next7days,
+    },
+    {
+      id: 'inbox',
+      label: 'Inbox',
+      icon: <Inbox className="w-4 h-4 text-sky-600" strokeWidth={1.75} />,
+      count: counts.inbox,
+    },
+    {
+      id: 'assigned',
+      label: 'Assigned to Me',
+      icon: <UserCheck className="w-4 h-4 text-emerald-600" strokeWidth={1.75} />,
+      count: counts.assigned,
+    },
+    {
+      id: 'summary',
+      label: 'Smart Summary',
+      icon: <FileText className="w-4 h-4 text-zinc-600" strokeWidth={1.75} />,
+    },
+  ];
+
   const ungroupedLists = lists.filter((l) => !l.folderId);
+
+  const renderListRow = (list: TaskList) => {
+    const isSelected = sidebarSelection.kind === 'list' && sidebarSelection.id === list.id;
+    const listCount = activeTasks.filter((t) => t.listId === list.id).length;
+
+    return (
+      <div
+        key={list.id}
+        onClick={() => handleSelectAndCloseOnMobile({ kind: 'list', id: list.id })}
+        className={`group flex items-center justify-between px-2.5 py-2 md:py-1.5 rounded-lg text-xs cursor-pointer ${
+          isSelected
+            ? 'bg-zinc-900/[0.06] text-zinc-900 font-semibold'
+            : 'text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-900'
+        }`}
+      >
+        <span className="flex items-center gap-2 truncate min-w-0">
+          <span
+            className="w-2 h-2 rounded-full shrink-0"
+            style={{ backgroundColor: list.color }}
+          />
+          <span className="truncate">{list.name}</span>
+          {list.isShared && (
+            <span className="text-[9px] px-1 py-0.2 rounded bg-zinc-200/80 text-zinc-600 font-medium shrink-0">
+              Team
+            </span>
+          )}
+        </span>
+
+        <div className="flex items-center gap-1 shrink-0">
+          <div className="flex items-center gap-0.5 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+            <button
+              type="button"
+              onClick={(e) => openEditListModal(list, e)}
+              title={`Edit list "${list.name}"`}
+              aria-label={`Edit list ${list.name}`}
+              className="p-1 rounded hover:bg-zinc-200 text-zinc-400 hover:text-zinc-800"
+            >
+              <Pencil className="w-3 h-3" strokeWidth={1.75} />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                deleteList(list.id);
+              }}
+              title={`Delete list "${list.name}"`}
+              aria-label={`Delete list ${list.name}`}
+              className="p-1 rounded hover:bg-rose-50 text-zinc-400 hover:text-rose-600"
+            >
+              <Trash2 className="w-3 h-3" strokeWidth={1.75} />
+            </button>
+          </div>
+          {listCount > 0 && (
+            <span className="text-[11px] font-mono-num text-zinc-400 pl-0.5">{listCount}</span>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <>
@@ -221,13 +350,15 @@ export const TaskSidebar: React.FC = () => {
               <button
                 onClick={() => setShowNewFolderInput((v) => !v)}
                 title="New Folder"
+                aria-label="New Folder"
                 className="p-1 rounded-md hover:bg-zinc-200/70 text-zinc-400 hover:text-zinc-700"
               >
                 <FolderPlus className="w-3.5 h-3.5" strokeWidth={1.75} />
               </button>
               <button
-                onClick={() => setShowNewListModal(true)}
+                onClick={openCreateListModal}
                 title="New List"
+                aria-label="New List"
                 className="p-1 rounded-md hover:bg-zinc-200/70 text-zinc-400 hover:text-zinc-700"
               >
                 <Plus className="w-3.5 h-3.5" strokeWidth={1.75} />
@@ -262,61 +393,96 @@ export const TaskSidebar: React.FC = () => {
           <div className="space-y-1">
             {folders.map((folder) => {
               const folderLists = lists.filter((l) => l.folderId === folder.id);
+              const isEditingThisFolder = editingFolderId === folder.id;
+
               return (
                 <div key={folder.id} className="space-y-0.5">
-                  <button
-                    onClick={() => toggleFolderCollapse(folder.id)}
-                    className="w-full flex items-center justify-between px-2 py-1.5 md:py-1 rounded-md text-xs font-semibold text-zinc-600 hover:bg-zinc-200/50"
-                  >
-                    <span className="flex items-center gap-1.5 truncate">
-                      {folder.isCollapsed ? (
-                        <ChevronRight className="w-3.5 h-3.5 text-zinc-400" strokeWidth={1.75} />
-                      ) : (
-                        <ChevronDown className="w-3.5 h-3.5 text-zinc-400" strokeWidth={1.75} />
-                      )}
-                      <span className="truncate">{folder.name}</span>
-                    </span>
-                    <span className="text-[10px] font-mono-num text-zinc-400">
-                      {folderLists.length}
-                    </span>
-                  </button>
+                  {isEditingThisFolder ? (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (editingFolderName.trim()) {
+                          updateFolder(folder.id, editingFolderName);
+                        }
+                        setEditingFolderId(null);
+                      }}
+                      className="flex items-center gap-1 px-1.5 py-1 bg-white rounded-lg border border-zinc-300"
+                    >
+                      <input
+                        type="text"
+                        value={editingFolderName}
+                        onChange={(e) => setEditingFolderName(e.target.value)}
+                        autoFocus
+                        className="flex-1 min-w-0 text-xs text-zinc-900 focus:outline-none"
+                      />
+                      <button
+                        type="submit"
+                        title="Save folder name"
+                        className="p-1 rounded bg-zinc-900 text-white"
+                      >
+                        <Check className="w-3 h-3" strokeWidth={2} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingFolderId(null)}
+                        title="Cancel"
+                        className="p-1 rounded text-zinc-400 hover:bg-zinc-100"
+                      >
+                        <X className="w-3 h-3" strokeWidth={2} />
+                      </button>
+                    </form>
+                  ) : (
+                    <div
+                      onClick={() => toggleFolderCollapse(folder.id)}
+                      className="group flex items-center justify-between px-2 py-1.5 md:py-1 rounded-md text-xs font-semibold text-zinc-600 hover:bg-zinc-200/50 cursor-pointer"
+                    >
+                      <span className="flex items-center gap-1.5 truncate min-w-0">
+                        {folder.isCollapsed ? (
+                          <ChevronRight className="w-3.5 h-3.5 text-zinc-400 shrink-0" strokeWidth={1.75} />
+                        ) : (
+                          <ChevronDown className="w-3.5 h-3.5 text-zinc-400 shrink-0" strokeWidth={1.75} />
+                        )}
+                        <span className="truncate">{folder.name}</span>
+                      </span>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <div className="flex items-center gap-0.5 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingFolderId(folder.id);
+                              setEditingFolderName(folder.name);
+                            }}
+                            title={`Rename folder "${folder.name}"`}
+                            aria-label={`Rename folder ${folder.name}`}
+                            className="p-1 rounded hover:bg-zinc-200 text-zinc-400 hover:text-zinc-800"
+                          >
+                            <Pencil className="w-3 h-3" strokeWidth={1.75} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteFolder(folder.id);
+                            }}
+                            title={`Delete folder "${folder.name}"`}
+                            aria-label={`Delete folder ${folder.name}`}
+                            className="p-1 rounded hover:bg-rose-50 text-zinc-400 hover:text-rose-600"
+                          >
+                            <Trash2 className="w-3 h-3" strokeWidth={1.75} />
+                          </button>
+                        </div>
+                        <span className="text-[10px] font-mono-num text-zinc-400">
+                          {folderLists.length}
+                        </span>
+                      </div>
+                    </div>
+                  )}
 
                   {!folder.isCollapsed && (
                     <div className="pl-3 space-y-0.5">
-                      {folderLists.map((list) => {
-                        const isSelected =
-                          sidebarSelection.kind === 'list' && sidebarSelection.id === list.id;
-                        const listCount = activeTasks.filter((t) => t.listId === list.id).length;
-                        return (
-                          <button
-                            key={list.id}
-                            onClick={() => handleSelectAndCloseOnMobile({ kind: 'list', id: list.id })}
-                            className={`w-full flex items-center justify-between px-2.5 py-2 md:py-1.5 rounded-lg text-xs ${
-                              isSelected
-                                ? 'bg-zinc-900/[0.06] text-zinc-900 font-semibold'
-                                : 'text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-900'
-                            }`}
-                          >
-                            <span className="flex items-center gap-2 truncate">
-                              <span
-                                className="w-2 h-2 rounded-full shrink-0"
-                                style={{ backgroundColor: list.color }}
-                              />
-                              <span className="truncate">{list.name}</span>
-                              {list.isShared && (
-                                <span className="text-[9px] px-1 py-0.2 rounded bg-zinc-200/80 text-zinc-600 font-medium">
-                                  Team
-                                </span>
-                              )}
-                            </span>
-                            {listCount > 0 && (
-                              <span className="text-[11px] font-mono-num text-zinc-400">
-                                {listCount}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
+                      {folderLists.map(renderListRow)}
                     </div>
                   )}
                 </div>
@@ -324,32 +490,7 @@ export const TaskSidebar: React.FC = () => {
             })}
 
             {/* Ungrouped Lists */}
-            {ungroupedLists.map((list) => {
-              const isSelected = sidebarSelection.kind === 'list' && sidebarSelection.id === list.id;
-              const listCount = activeTasks.filter((t) => t.listId === list.id).length;
-              return (
-                <button
-                  key={list.id}
-                  onClick={() => handleSelectAndCloseOnMobile({ kind: 'list', id: list.id })}
-                  className={`w-full flex items-center justify-between px-2.5 py-2 md:py-1.5 rounded-lg text-xs ${
-                    isSelected
-                      ? 'bg-zinc-900/[0.06] text-zinc-900 font-semibold'
-                      : 'text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-900'
-                  }`}
-                >
-                  <span className="flex items-center gap-2 truncate">
-                    <span
-                      className="w-2 h-2 rounded-full shrink-0"
-                      style={{ backgroundColor: list.color }}
-                    />
-                    <span className="truncate">{list.name}</span>
-                  </span>
-                  {listCount > 0 && (
-                    <span className="text-[11px] font-mono-num text-zinc-400">{listCount}</span>
-                  )}
-                </button>
-              );
-            })}
+            {ungroupedLists.map(renderListRow)}
           </div>
         </div>
 
@@ -392,9 +533,9 @@ export const TaskSidebar: React.FC = () => {
                       deleteCustomFilter(flt.id);
                     }}
                     title="Delete filter"
-                    className="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-rose-500 p-0.5"
+                    className="md:opacity-0 md:group-hover:opacity-100 text-zinc-400 hover:text-rose-500 p-0.5"
                   >
-                    <X className="w-3 h-3" strokeWidth={1.75} />
+                    <Trash2 className="w-3 h-3" strokeWidth={1.75} />
                   </button>
                 </div>
               );
@@ -404,15 +545,16 @@ export const TaskSidebar: React.FC = () => {
 
         <div className="border-t border-zinc-200/70 mx-3 my-1" />
 
-        {/* Tags Section */}
+        {/* Tags Section (with Edit & Delete) */}
         <div className="px-2.5 py-2">
           <div className="flex items-center justify-between px-2 mb-1.5">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-              Tags
+              Tags ({tags.length})
             </span>
             <button
               onClick={() => setShowNewTagInput((v) => !v)}
               title="New Tag"
+              aria-label="New Tag"
               className="p-1 rounded-md hover:bg-zinc-200/70 text-zinc-400 hover:text-zinc-700"
             >
               <Plus className="w-3.5 h-3.5" strokeWidth={1.75} />
@@ -442,32 +584,117 @@ export const TaskSidebar: React.FC = () => {
             </form>
           )}
 
-          <div className="flex flex-wrap gap-1 px-1">
+          {/* Inline Tag Edit Form */}
+          {editingTagId && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (editingTagName.trim()) {
+                  updateTag(editingTagId, editingTagName, editingTagColor);
+                }
+                setEditingTagId(null);
+              }}
+              className="mb-2 p-2 rounded-lg bg-white border border-zinc-300 space-y-2 animate-popover"
+            >
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                Edit Tag
+              </div>
+              <input
+                type="text"
+                value={editingTagName}
+                onChange={(e) => setEditingTagName(e.target.value)}
+                autoFocus
+                className="w-full px-2 py-1 text-xs rounded border border-zinc-200 focus:outline-none focus:border-zinc-900"
+              />
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1">
+                  {['#2563eb', '#059669', '#d97706', '#e11d48', '#7c3aed', '#0d9488'].map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setEditingTagColor(c)}
+                      style={{ backgroundColor: c }}
+                      className={`w-4 h-4 rounded-full ${
+                        editingTagColor === c ? 'ring-2 ring-offset-1 ring-zinc-900' : ''
+                      }`}
+                    />
+                  ))}
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setEditingTagId(null)}
+                    className="px-2 py-0.5 rounded text-[10px] text-zinc-500 hover:bg-zinc-100"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-2 py-0.5 rounded text-[10px] font-semibold bg-zinc-900 text-white"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </form>
+          )}
+
+          <div className="space-y-0.5">
             {tags.map((tag) => {
               const isSelected = sidebarSelection.kind === 'tag' && sidebarSelection.id === tag.name;
               return (
-                <button
+                <div
                   key={tag.id}
                   onClick={() => handleSelectAndCloseOnMobile({ kind: 'tag', id: tag.name })}
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium border ${
+                  className={`group flex items-center justify-between px-2.5 py-1.5 md:py-1 rounded-lg text-xs cursor-pointer ${
                     isSelected
-                      ? 'bg-zinc-900 text-white border-zinc-900'
-                      : 'bg-white text-zinc-600 border-zinc-200/80 hover:border-zinc-300 hover:text-zinc-900'
+                      ? 'bg-zinc-900/[0.06] text-zinc-900 font-semibold'
+                      : 'text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-900'
                   }`}
                 >
-                  <Hash
-                    className="w-2.5 h-2.5"
-                    style={{ color: isSelected ? '#fff' : tag.color }}
-                    strokeWidth={1.75}
-                  />
-                  {tag.name}
-                </button>
+                  <span className="flex items-center gap-1.5 truncate min-w-0">
+                    <Hash
+                      className="w-3 h-3 shrink-0"
+                      style={{ color: tag.color }}
+                      strokeWidth={1.75}
+                    />
+                    <span className="truncate">{tag.name}</span>
+                  </span>
+                  <div className="flex items-center gap-0.5 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingTagId(tag.id);
+                        setEditingTagName(tag.name);
+                        setEditingTagColor(tag.color);
+                      }}
+                      title={`Edit tag #${tag.name}`}
+                      aria-label={`Edit tag ${tag.name}`}
+                      className="p-1 rounded hover:bg-zinc-200 text-zinc-400 hover:text-zinc-800"
+                    >
+                      <Pencil className="w-3 h-3" strokeWidth={1.75} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteTag(tag.id);
+                      }}
+                      title={`Delete tag #${tag.name}`}
+                      aria-label={`Delete tag ${tag.name}`}
+                      className="p-1 rounded hover:bg-rose-50 text-zinc-400 hover:text-rose-600"
+                    >
+                      <Trash2 className="w-3 h-3" strokeWidth={1.75} />
+                    </button>
+                  </div>
+                </div>
               );
             })}
           </div>
         </div>
 
-        {/* Archive / Completed / Won't Do / Trash */}
+        {/* Archive / Completed / Won't Do / Trash & Start Blank */}
         <div className="mt-auto p-2.5 border-t border-zinc-200/80 space-y-0.5">
           <button
             onClick={() => handleSelectAndCloseOnMobile({ kind: 'smart', id: 'completed' })}
@@ -519,29 +746,70 @@ export const TaskSidebar: React.FC = () => {
               {tasks.filter((t) => t.status === 'trash').length}
             </span>
           </button>
+
+          {/* Start Blank / Clear All Data Button */}
+          <div className="pt-2 mt-1 border-t border-zinc-200/70">
+            {!confirmBlankReset ? (
+              <button
+                type="button"
+                onClick={() => setConfirmBlankReset(true)}
+                className="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-rose-600 bg-rose-50/70 hover:bg-rose-100/80 border border-rose-200/70"
+              >
+                <Eraser className="w-3.5 h-3.5" strokeWidth={1.75} />
+                Reset to Blank Workspace
+              </button>
+            ) : (
+              <div className="p-2 rounded-lg bg-rose-50 border border-rose-200 space-y-1.5 animate-popover">
+                <div className="text-[10px] font-semibold text-rose-800">
+                  Clear all tasks, lists, habits & logs?
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearAllWorkspaceData();
+                      setConfirmBlankReset(false);
+                    }}
+                    className="flex-1 py-1 rounded bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-semibold"
+                  >
+                    Yes, Start Blank
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmBlankReset(false)}
+                    className="px-2 py-1 rounded bg-white text-zinc-600 text-[10px] font-medium border border-zinc-200"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Modal: Create New List */}
-        {showNewListModal && (
+        {/* Modal: Create or Edit List */}
+        {showListModal && (
           <div
-            onClick={() => setShowNewListModal(false)}
+            onClick={() => setShowListModal(false)}
             className="fixed inset-0 z-50 bg-zinc-950/40 backdrop-blur-[2px] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-backdrop"
           >
             <form
               onClick={(e) => e.stopPropagation()}
-              onSubmit={handleCreateList}
+              onSubmit={handleSaveList}
               className="surface-floating rounded-t-2xl sm:rounded-xl w-full max-w-sm p-5 pb-8 sm:pb-5 space-y-4 animate-sheet-up sm:animate-modal"
             >
               <div className="sm:hidden w-10 h-1 rounded-full bg-zinc-300 mx-auto -mt-1 mb-2" />
-              <h3 className="text-sm font-semibold text-zinc-900">Create New List</h3>
+              <h3 className="text-sm font-semibold text-zinc-900">
+                {editingListId ? 'Edit List' : 'Create New List'}
+              </h3>
               <div>
                 <label className="block text-xs font-medium text-zinc-600 mb-1">List Name</label>
                 <input
                   type="text"
                   required
                   autoFocus
-                  value={newListName}
-                  onChange={(e) => setNewListName(e.target.value)}
+                  value={listName}
+                  onChange={(e) => setListName(e.target.value)}
                   placeholder="e.g. Q1 Product Roadmap"
                   className="w-full px-3 py-2 text-xs rounded-lg border border-zinc-300 focus:outline-none focus:border-zinc-900"
                 />
@@ -551,8 +819,8 @@ export const TaskSidebar: React.FC = () => {
                 <div>
                   <label className="block text-xs font-medium text-zinc-600 mb-1">Folder</label>
                   <select
-                    value={newListFolderId}
-                    onChange={(e) => setNewListFolderId(e.target.value)}
+                    value={listFolderId}
+                    onChange={(e) => setListFolderId(e.target.value)}
                     className="w-full px-2.5 py-2 text-xs rounded-lg border border-zinc-300 bg-white"
                   >
                     <option value="">None (Top level)</option>
@@ -566,8 +834,8 @@ export const TaskSidebar: React.FC = () => {
                 <div>
                   <label className="block text-xs font-medium text-zinc-600 mb-1">Default View</label>
                   <select
-                    value={newListViewMode}
-                    onChange={(e) => setNewListViewMode(e.target.value as ViewMode)}
+                    value={listViewMode}
+                    onChange={(e) => setListViewMode(e.target.value as ViewMode)}
                     className="w-full px-2.5 py-2 text-xs rounded-lg border border-zinc-300 bg-white"
                   >
                     <option value="list">List View</option>
@@ -585,10 +853,10 @@ export const TaskSidebar: React.FC = () => {
                       <button
                         type="button"
                         key={c}
-                        onClick={() => setNewListColor(c)}
+                        onClick={() => setListColor(c)}
                         style={{ backgroundColor: c }}
                         className={`w-5 h-5 rounded-full ${
-                          newListColor === c ? 'ring-2 ring-offset-2 ring-zinc-900' : ''
+                          listColor === c ? 'ring-2 ring-offset-2 ring-zinc-900' : ''
                         }`}
                       />
                     )
@@ -599,7 +867,7 @@ export const TaskSidebar: React.FC = () => {
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowNewListModal(false)}
+                  onClick={() => setShowListModal(false)}
                   className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-600 hover:bg-zinc-100"
                 >
                   Cancel
@@ -608,7 +876,7 @@ export const TaskSidebar: React.FC = () => {
                   type="submit"
                   className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800"
                 >
-                  Create List
+                  {editingListId ? 'Save Changes' : 'Create List'}
                 </button>
               </div>
             </form>

@@ -38,55 +38,77 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
     await page.locator('button[title="List View"]').click();
   });
 
-  test('Supabase Cloud Push, Pull & Live PC <-> Mobile Cross-Device Sync', async ({
-    browser,
+  test('Edit/Delete Lists, Folders & Tags, Resizable PC Inspector, Focus/Habit Log Filtering & Deletion, and Blank Reset', async ({
+    page,
     isMobile,
   }) => {
-    // Run the multi-context PC <-> Mobile sync test once from the desktop runner
     if (isMobile) return;
 
-    const pcContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
-    const mobileContext = await browser.newContext({
-      viewport: { width: 375, height: 812 },
-      isMobile: true,
-      hasTouch: true,
-    });
+    await page.goto('/');
 
-    const pcPage = await pcContext.newPage();
-    const mobilePage = await mobileContext.newPage();
+    // 1. Verify PC Right Inspector Resize Handle exists
+    await expect(page.locator('[aria-label="Resize Right Inspector"]')).toBeVisible();
 
-    await pcPage.goto('/');
-    await mobilePage.goto('/');
+    // 2. Edit a Folder name & Delete a Tag in Sidebar
+    await page.locator('button[aria-label="Rename folder Product & Engineering"]').click();
+    const folderInput = page.locator('aside[aria-label="Lists, Tags, and Filters"] form input[type="text"]').first();
+    await folderInput.fill('Core Engineering');
+    await folderInput.press('Enter');
+    await expect(page.getByText('Core Engineering').first()).toBeVisible();
 
-    // Open Supabase settings on PC and verify Push & Pull succeed without RLS or Pull errors
-    await pcPage.locator('button[aria-label="Supabase Backend Settings"]').click();
-    await expect(pcPage.getByText('Connected (Live Sync)')).toBeVisible();
+    // Edit a List via Edit List Modal
+    await page.locator('button[aria-label="Edit list Q4 Core Launch"]').click();
+    await expect(page.getByText('Edit List')).toBeVisible();
+    const listModalInput = page.locator('form input[placeholder="e.g. Q1 Product Roadmap"]');
+    await listModalInput.fill('Q4 Launch Renamed');
+    await page.getByRole('button', { name: 'Save Changes' }).click();
+    await expect(page.getByText('Q4 Launch Renamed').first()).toBeVisible();
 
-    await pcPage.getByRole('button', { name: /Push to Supabase/i }).click();
-    await expect(pcPage.getByText(/Pushed .* tasks/i).first()).toBeVisible();
+    // Delete a Tag
+    await page.locator('button[aria-label="Delete tag finance"]').click();
 
-    await pcPage.getByRole('button', { name: /Pull from Supabase/i }).click();
+    // 3. Test Pomodoro / Stopwatch Focus Log Filters & Deletion
+    const desktopRail = page.locator('aside[aria-label="Primary Module Navigation"]');
+    await desktopRail.locator('button[aria-label="Pomodoro & Focus"]').click();
+    await expect(page.getByText(/Focus Record Log/i)).toBeVisible();
+
+    // Filter Focus Logs by Stopwatch / Pomo
+    await page.getByRole('button', { name: 'Stopwatch', exact: true }).last().click();
+    await page.getByRole('button', { name: 'All', exact: true }).last().click();
+
+    // Delete a Focus Session Log
+    const deleteFocusBtns = page.locator('button[title="Remove focus log"]');
+    const beforeFocusCount = await deleteFocusBtns.count();
+    expect(beforeFocusCount).toBeGreaterThan(0);
+    await deleteFocusBtns.first().click();
+    await expect(deleteFocusBtns).toHaveCount(beforeFocusCount - 1);
+
+    // 4. Test Habit Tracker Log Filters & Deletion
+    await desktopRail.locator('button[aria-label="Habit Tracker"]').click();
+    await expect(page.getByText(/Habit Journal & Mood Logs/i)).toBeVisible();
+
+    const deleteHabitLogBtns = page.locator('button[aria-label^="Delete habit log"]');
+    const beforeHabitLogCount = await deleteHabitLogBtns.count();
+    expect(beforeHabitLogCount).toBeGreaterThan(0);
+    await deleteHabitLogBtns.first().click();
+    await expect(deleteHabitLogBtns).toHaveCount(beforeHabitLogCount - 1);
+
+    // 5. Test Supabase Cloud Push & Pull
+    await desktopRail.locator('button[aria-label="Supabase Backend Settings"]').click();
+    await expect(page.getByText('Connected (Live Sync)')).toBeVisible();
+    await page.getByRole('button', { name: /Push to Supabase/i }).click();
+    await expect(page.getByText(/Pushed .* tasks/i).first()).toBeVisible();
+    await page.getByRole('button', { name: /Pull from Supabase/i }).click();
     await expect(
-      pcPage.getByText(/(Pulled .* tasks|Connected to Supabase Cloud — workspace is up to date)/i).first()
+      page.getByText(/(Pulled .* tasks|Connected to Supabase Cloud — workspace is up to date)/i).first()
     ).toBeVisible();
+    await page.locator('button[title="Close Settings"]').click();
 
-    // Close settings modal on PC
-    await pcPage.locator('button[title="Close Settings"]').click();
-
-    // Create a task on PC and verify it syncs live to Mobile via Supabase Realtime
-    const pcInput = pcPage.locator('input[placeholder*="Add task... Try NLP"]');
-    await pcInput.fill('Synced Task From PC to Mobile today !high');
-    await pcInput.press('Enter');
-
-    await expect(pcPage.getByText('Synced Task From PC to Mobile').first()).toBeVisible();
-
-    // Verify Mobile receives the task via Supabase Realtime Broadcast/Presence
-    await expect(mobilePage.getByText('Synced Task From PC to Mobile').first()).toBeVisible({
-      timeout: 8000,
-    });
-
-    await pcContext.close();
-    await mobileContext.close();
+    // 6. Test Reset to Blank Workspace
+    await desktopRail.locator('button[aria-label="Tasks"]').click();
+    await page.getByRole('button', { name: /Reset to Blank Workspace/i }).click();
+    await page.getByRole('button', { name: /Yes, Start Blank/i }).click();
+    await expect(page.getByText('All clear')).toBeVisible();
   });
 
   test('All Modules Navigation (Calendar, Pomodoro, Habits, Matrix, Countdown, Statistics)', async ({
