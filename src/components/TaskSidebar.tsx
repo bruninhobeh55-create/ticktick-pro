@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { format, addDays, isBefore, parseISO, startOfToday } from 'date-fns';
 import {
   Archive,
@@ -988,406 +989,415 @@ export const TaskSidebar: React.FC = () => {
           </div>
         </div>
 
-        {/* Rich 2-Column TickTick Modal: Edit List / Add List with Live Preview */}
-        {showListModal && (
-          <div
-            onClick={() => setShowListModal(false)}
-            className="fixed inset-0 z-50 bg-zinc-950/50 backdrop-blur-[2px] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-backdrop"
-          >
-            <form
-              onClick={(e) => e.stopPropagation()}
-              onSubmit={handleSaveList}
-              className="surface-floating rounded-t-2xl sm:rounded-2xl w-full max-w-2xl p-6 pb-8 sm:pb-6 animate-sheet-up sm:animate-modal bg-white border border-zinc-200 shadow-2xl"
+        {/* Rich 2-Column TickTick Modal: Edit List / Add List with Live Preview (Portaled to document.body) */}
+        {showListModal &&
+          createPortal(
+            <div
+              onClick={() => setShowListModal(false)}
+              className="fixed inset-0 z-[100] bg-zinc-950/50 backdrop-blur-[2px] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-backdrop"
             >
-              <div className="sm:hidden w-10 h-1 rounded-full bg-zinc-300 mx-auto -mt-1 mb-3" />
+              <form
+                onClick={(e) => e.stopPropagation()}
+                onSubmit={handleSaveList}
+                className="surface-floating rounded-t-2xl sm:rounded-2xl w-full max-w-[680px] p-6 pb-8 sm:pb-6 animate-sheet-up sm:animate-modal bg-white border border-zinc-200 shadow-2xl overflow-hidden"
+              >
+                <div className="sm:hidden w-10 h-1 rounded-full bg-zinc-300 mx-auto -mt-1 mb-3" />
 
-              {/* Modal Header */}
-              <div className="flex items-center justify-between mb-5">
-                <h3 className="text-base font-semibold text-zinc-900">
-                  {editingListId ? 'Edit List' : 'Add List'}
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => setShowListModal(false)}
-                  aria-label="Close modal"
-                  className="p-1 rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
-                >
-                  <X className="w-4 h-4" strokeWidth={1.75} />
-                </button>
-              </div>
+                {/* Modal Header */}
+                <div className="flex items-center justify-between mb-5">
+                  <h3 className="text-base font-semibold text-zinc-900">
+                    {editingListId ? 'Edit List' : 'Add List'}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setShowListModal(false)}
+                    aria-label="Close modal"
+                    className="p-1 rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                  >
+                    <X className="w-4 h-4" strokeWidth={1.75} />
+                  </button>
+                </div>
 
-              {/* 2-Column Body */}
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-stretch">
-                {/* Left Column: Form Controls */}
-                <div className="md:col-span-7 space-y-4">
-                  {/* Unified Emoji + Name Input */}
-                  <div className="relative flex items-center rounded-lg border border-blue-500 ring-2 ring-blue-500/10 bg-white">
-                    <button
-                      type="button"
-                      onClick={() => setShowEmojiPicker((v) => !v)}
-                      title="Choose list icon"
-                      className="px-3 py-2 border-r border-zinc-200 text-sm hover:bg-zinc-50 flex items-center justify-center shrink-0"
-                    >
-                      {listEmoji || <Smile className="w-4 h-4 text-zinc-400" />}
-                    </button>
-                    <input
-                      type="text"
-                      required
-                      autoFocus
-                      value={listName}
-                      onChange={(e) => setListName(e.target.value)}
-                      placeholder="Name"
-                      className="flex-1 px-3 py-2 text-xs text-zinc-900 focus:outline-none bg-transparent"
-                    />
-
-                    {showEmojiPicker && (
-                      <div className="absolute left-0 top-11 z-20 p-2 rounded-xl bg-white border border-zinc-200 shadow-xl grid grid-cols-6 gap-1 animate-popover">
-                        {LIST_EMOJIS.map((em) => (
-                          <button
-                            key={em}
-                            type="button"
-                            onClick={() => {
-                              setListEmoji(em);
-                              setShowEmojiPicker(false);
-                            }}
-                            className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm hover:bg-zinc-100 ${
-                              listEmoji === em ? 'bg-blue-50 ring-1 ring-blue-500' : ''
-                            }`}
-                          >
-                            {em}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* List Color Swatches */}
-                  <div className="flex items-center justify-between gap-3">
-                    <label className="text-xs font-medium text-zinc-600 shrink-0">List Color</label>
-                    <div className="flex items-center gap-1.5 flex-wrap">
+                {/* 2-Column Body */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-6 items-stretch">
+                  {/* Left Column: Form Controls */}
+                  <div className="sm:col-span-7 space-y-4 min-w-0">
+                    {/* Unified Emoji + Name Input */}
+                    <div className="relative flex items-center rounded-lg border border-blue-500 ring-2 ring-blue-500/10 bg-white">
                       <button
                         type="button"
-                        onClick={() => setListColor('')}
-                        title="No Color"
-                        className={`w-5 h-5 rounded-full flex items-center justify-center border ${
-                          !listColor
-                            ? 'border-zinc-900 text-zinc-900 ring-2 ring-offset-1 ring-zinc-300'
-                            : 'border-zinc-300 text-zinc-400'
-                        }`}
+                        onClick={() => setShowEmojiPicker((v) => !v)}
+                        title="Choose list icon"
+                        className="px-3 py-2 border-r border-zinc-200 text-sm hover:bg-zinc-50 flex items-center justify-center shrink-0"
                       >
-                        <Ban className="w-3 h-3" strokeWidth={2} />
+                        {listEmoji || <Smile className="w-4 h-4 text-zinc-400" />}
                       </button>
-                      {LIST_COLOR_PRESETS.map((c) => (
+                      <input
+                        type="text"
+                        required
+                        autoFocus
+                        value={listName}
+                        onChange={(e) => setListName(e.target.value)}
+                        placeholder="Name"
+                        className="flex-1 min-w-0 px-3 py-2 text-xs text-zinc-900 focus:outline-none bg-transparent"
+                      />
+
+                      {showEmojiPicker && (
+                        <div className="absolute left-0 top-11 z-30 p-2 rounded-xl bg-white border border-zinc-200 shadow-xl grid grid-cols-6 gap-1 animate-popover">
+                          {LIST_EMOJIS.map((em) => (
+                            <button
+                              key={em}
+                              type="button"
+                              onClick={() => {
+                                setListEmoji(em);
+                                setShowEmojiPicker(false);
+                              }}
+                              className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm hover:bg-zinc-100 ${
+                                listEmoji === em ? 'bg-blue-50 ring-1 ring-blue-500' : ''
+                              }`}
+                            >
+                              {em}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* List Color Swatches */}
+                    <div className="grid grid-cols-[115px_1fr] items-center gap-2">
+                      <label className="text-xs font-medium text-zinc-600">List Color</label>
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <button
                           type="button"
-                          key={c}
-                          onClick={() => setListColor(c)}
-                          style={{ backgroundColor: c }}
-                          className={`w-5 h-5 rounded-full transition-transform ${
-                            listColor === c ? 'ring-2 ring-offset-2 ring-zinc-900 scale-105' : ''
+                          onClick={() => setListColor('')}
+                          title="No Color"
+                          className={`w-5 h-5 rounded-full flex items-center justify-center border shrink-0 ${
+                            !listColor
+                              ? 'border-zinc-900 text-zinc-900 ring-2 ring-offset-1 ring-zinc-300'
+                              : 'border-zinc-300 text-zinc-400'
                           }`}
-                        />
-                      ))}
-                      <label
-                        title="Custom Color"
-                        className="w-5 h-5 rounded-full cursor-pointer border border-zinc-300 bg-[conic-gradient(from_90deg,#ef4444,#f59e0b,#10b981,#3b82f6,#8b5cf6,#ef4444)] relative overflow-hidden"
-                      >
-                        <input
-                          type="color"
-                          value={listColor || '#38bdf8'}
-                          onChange={(e) => setListColor(e.target.value)}
-                          className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
-                        />
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* View Type Visual Cards (List / Kanban / Timeline with Crown) */}
-                  <div className="flex items-center justify-between gap-3">
-                    <label className="text-xs font-medium text-zinc-600 shrink-0">View Type</label>
-                    <div className="flex items-center gap-2.5">
-                      {(
-                        [
-                          { id: 'list', label: 'List', icon: ListIcon, pro: false },
-                          { id: 'kanban', label: 'Kanban', icon: Columns3, pro: false },
-                          { id: 'timeline', label: 'Timeline', icon: GanttChart, pro: true },
-                        ] as const
-                      ).map((v) => {
-                        const Icon = v.icon;
-                        const active = listViewMode === v.id;
-                        return (
+                        >
+                          <Ban className="w-3 h-3" strokeWidth={2} />
+                        </button>
+                        {LIST_COLOR_PRESETS.map((c) => (
                           <button
-                            key={v.id}
                             type="button"
-                            onClick={() => setListViewMode(v.id)}
-                            title={`${v.label} View`}
-                            className={`relative w-14 h-10 rounded-lg border flex items-center justify-center transition-colors ${
-                              active
-                                ? 'border-blue-600 bg-blue-50/70 text-blue-600 ring-1 ring-blue-600/30'
-                                : 'border-zinc-200 bg-zinc-50/60 text-zinc-500 hover:bg-zinc-100'
+                            key={c}
+                            onClick={() => setListColor(c)}
+                            style={{ backgroundColor: c }}
+                            className={`w-5 h-5 rounded-full transition-transform shrink-0 ${
+                              listColor === c ? 'ring-2 ring-offset-2 ring-zinc-900 scale-105' : ''
                             }`}
-                          >
-                            <Icon className="w-4 h-4" strokeWidth={1.75} />
-                            {v.pro && (
-                              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-amber-100 border border-amber-300 flex items-center justify-center">
-                                <Crown className="w-2.5 h-2.5 text-amber-600 fill-amber-500" />
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Folder Selector */}
-                  <div className="flex items-center justify-between gap-3">
-                    <label className="text-xs font-medium text-zinc-600 shrink-0">Folder</label>
-                    <select
-                      value={listFolderId}
-                      onChange={(e) => setListFolderId(e.target.value)}
-                      className="w-48 px-2.5 py-1.5 text-xs rounded-lg border border-zinc-200 bg-zinc-50/70 text-zinc-700 focus:outline-none focus:border-blue-500"
-                    >
-                      <option value="">None</option>
-                      {folders.map((f) => (
-                        <option key={f.id} value={f.id}>
-                          {f.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* List Type Selector */}
-                  <div className="flex items-center justify-between gap-3">
-                    <label className="text-xs font-medium text-zinc-600 shrink-0">List Type</label>
-                    <select
-                      value={listType}
-                      onChange={(e) => setListType(e.target.value as 'task' | 'note')}
-                      className="w-48 px-2.5 py-1.5 text-xs rounded-lg border border-zinc-200 bg-zinc-50/70 text-zinc-700 focus:outline-none focus:border-blue-500"
-                    >
-                      <option value="task">Task List</option>
-                      <option value="note">Note List</option>
-                    </select>
-                  </div>
-
-                  {/* Show in Smart List Selector */}
-                  <div className="flex items-center justify-between gap-3">
-                    <label className="text-xs font-medium text-zinc-600 shrink-0">
-                      Show in Smart List
-                    </label>
-                    <select
-                      value={showInSmartList}
-                      onChange={(e) => setShowInSmartList(e.target.value as 'all' | 'hidden')}
-                      className="w-48 px-2.5 py-1.5 text-xs rounded-lg border border-zinc-200 bg-zinc-50/70 text-zinc-700 focus:outline-none focus:border-blue-500"
-                    >
-                      <option value="all">All tasks</option>
-                      <option value="hidden">Do not show</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Right Column: Live Interactive Workspace Preview */}
-                <div className="md:col-span-5 rounded-xl bg-zinc-100/80 border border-zinc-200/80 p-3.5 flex flex-col justify-between select-none">
-                  <div className="rounded-lg bg-white border border-zinc-200/80 p-3 shadow-xs space-y-2.5 flex-1">
-                    {/* Preview Header */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="text-xs">{listEmoji}</span>
-                        <span className="text-xs font-semibold text-zinc-900 truncate">
-                          {listName.trim() || 'Welcome'}
-                        </span>
+                          />
+                        ))}
+                        <label
+                          title="Custom Color"
+                          className="w-5 h-5 rounded-full cursor-pointer border border-zinc-300 bg-[conic-gradient(from_90deg,#ef4444,#f59e0b,#10b981,#3b82f6,#8b5cf6,#ef4444)] relative overflow-hidden shrink-0"
+                        >
+                          <input
+                            type="color"
+                            value={listColor || '#38bdf8'}
+                            onChange={(e) => setListColor(e.target.value)}
+                            className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
+                          />
+                        </label>
                       </div>
-                      <MoreHorizontal className="w-3.5 h-3.5 text-zinc-300 shrink-0" />
                     </div>
 
-                    {/* Preview Add Bar */}
-                    <div className="h-5 rounded bg-zinc-100 px-2 flex items-center">
-                      <Plus className="w-2.5 h-2.5 text-zinc-300" />
+                    {/* View Type Visual Cards (List / Kanban / Timeline with Crown) */}
+                    <div className="grid grid-cols-[115px_1fr] items-center gap-2">
+                      <label className="text-xs font-medium text-zinc-600">View Type</label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {(
+                          [
+                            { id: 'list', label: 'List', icon: ListIcon, pro: false },
+                            { id: 'kanban', label: 'Kanban', icon: Columns3, pro: false },
+                            { id: 'timeline', label: 'Timeline', icon: GanttChart, pro: true },
+                          ] as const
+                        ).map((v) => {
+                          const Icon = v.icon;
+                          const active = listViewMode === v.id;
+                          return (
+                            <button
+                              key={v.id}
+                              type="button"
+                              onClick={() => setListViewMode(v.id)}
+                              title={`${v.label} View`}
+                              className={`relative h-10 rounded-lg border flex items-center justify-center transition-colors ${
+                                active
+                                  ? 'border-blue-600 bg-blue-50/70 text-blue-600 ring-1 ring-blue-600/30'
+                                  : 'border-zinc-200 bg-zinc-50/60 text-zinc-500 hover:bg-zinc-100'
+                              }`}
+                            >
+                              <Icon className="w-4 h-4" strokeWidth={1.75} />
+                              {v.pro && (
+                                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-amber-100 border border-amber-300 flex items-center justify-center">
+                                  <Crown className="w-2.5 h-2.5 text-amber-600 fill-amber-500" />
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
 
-                    {/* Dynamic Preview Layout by View Mode */}
-                    {listViewMode === 'list' && (
-                      <div className="space-y-2 pt-1">
-                        <div className="text-[8px] font-semibold uppercase tracking-wider text-zinc-400">
-                          Today
+                    {/* Folder Selector */}
+                    <div className="grid grid-cols-[115px_1fr] items-center gap-2">
+                      <label className="text-xs font-medium text-zinc-600">Folder</label>
+                      <select
+                        value={listFolderId}
+                        onChange={(e) => setListFolderId(e.target.value)}
+                        className="w-full px-2.5 py-2 text-xs rounded-lg border border-zinc-200 bg-zinc-50/70 text-zinc-700 focus:outline-none focus:border-blue-500 truncate"
+                      >
+                        <option value="">None</option>
+                        {folders.map((f) => (
+                          <option key={f.id} value={f.id}>
+                            {f.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* List Type Selector */}
+                    <div className="grid grid-cols-[115px_1fr] items-center gap-2">
+                      <label className="text-xs font-medium text-zinc-600">List Type</label>
+                      <select
+                        value={listType}
+                        onChange={(e) => setListType(e.target.value as 'task' | 'note')}
+                        className="w-full px-2.5 py-2 text-xs rounded-lg border border-zinc-200 bg-zinc-50/70 text-zinc-700 focus:outline-none focus:border-blue-500"
+                      >
+                        <option value="task">Task List</option>
+                        <option value="note">Note List</option>
+                      </select>
+                    </div>
+
+                    {/* Show in Smart List Selector */}
+                    <div className="grid grid-cols-[115px_1fr] items-center gap-2">
+                      <label className="text-xs font-medium text-zinc-600">
+                        Show in Smart List
+                      </label>
+                      <select
+                        value={showInSmartList}
+                        onChange={(e) => setShowInSmartList(e.target.value as 'all' | 'hidden')}
+                        className="w-full px-2.5 py-2 text-xs rounded-lg border border-zinc-200 bg-zinc-50/70 text-zinc-700 focus:outline-none focus:border-blue-500"
+                      >
+                        <option value="all">All tasks</option>
+                        <option value="hidden">Do not show</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Live Interactive Workspace Preview */}
+                  <div className="sm:col-span-5 rounded-xl bg-zinc-100/80 border border-zinc-200/80 p-3.5 flex flex-col justify-between select-none min-w-0">
+                    <div className="rounded-lg bg-white border border-zinc-200/80 p-3 shadow-xs space-y-2.5 flex-1">
+                      {/* Preview Header */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="text-xs">{listEmoji}</span>
+                          <span className="text-xs font-semibold text-zinc-900 truncate">
+                            {listName.trim() || 'Welcome'}
+                          </span>
                         </div>
-                        {[1, 2, 3].map((idx) => (
-                          <div key={idx} className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-1.5 flex-1">
+                        <MoreHorizontal className="w-3.5 h-3.5 text-zinc-300 shrink-0" />
+                      </div>
+
+                      {/* Preview Add Bar */}
+                      <div className="h-5 rounded bg-zinc-100 px-2 flex items-center">
+                        <Plus className="w-2.5 h-2.5 text-zinc-300" />
+                      </div>
+
+                      {/* Dynamic Preview Layout by View Mode */}
+                      {listViewMode === 'list' && (
+                        <div className="space-y-2 pt-1">
+                          <div className="text-[8px] font-semibold uppercase tracking-wider text-zinc-400">
+                            Today
+                          </div>
+                          {[1, 2, 3].map((idx) => (
+                            <div key={idx} className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5 flex-1">
+                                <span
+                                  className="w-2.5 h-2.5 rounded-[3px] border"
+                                  style={{ borderColor: listColor || '#cbd5e1' }}
+                                />
+                                <div className="h-2 rounded bg-zinc-100 flex-1" />
+                              </div>
                               <span
-                                className="w-2.5 h-2.5 rounded-[3px] border"
-                                style={{ borderColor: listColor || '#cbd5e1' }}
-                              />
+                                className="text-[8px] font-mono-num"
+                                style={{ color: listColor || '#3b82f6' }}
+                              >
+                                Today
+                              </span>
+                            </div>
+                          ))}
+                          <div className="text-[8px] font-semibold uppercase tracking-wider text-zinc-400 pt-1">
+                            Completed
+                          </div>
+                          {[1, 2].map((idx) => (
+                            <div key={idx} className="flex items-center gap-1.5 opacity-60">
+                              <span className="w-2.5 h-2.5 rounded-[3px] bg-zinc-300 flex items-center justify-center text-white">
+                                <Check className="w-2 h-2" />
+                              </span>
                               <div className="h-2 rounded bg-zinc-100 flex-1" />
                             </div>
-                            <span
-                              className="text-[8px] font-mono-num"
-                              style={{ color: listColor || '#3b82f6' }}
-                            >
-                              Today
-                            </span>
-                          </div>
-                        ))}
-                        <div className="text-[8px] font-semibold uppercase tracking-wider text-zinc-400 pt-1">
-                          Completed
+                          ))}
                         </div>
-                        {[1, 2].map((idx) => (
-                          <div key={idx} className="flex items-center gap-1.5 opacity-60">
-                            <span className="w-2.5 h-2.5 rounded-[3px] bg-zinc-300 flex items-center justify-center text-white">
-                              <Check className="w-2 h-2" />
-                            </span>
-                            <div className="h-2 rounded bg-zinc-100 flex-1" />
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                      )}
 
-                    {listViewMode === 'kanban' && (
-                      <div className="grid grid-cols-2 gap-2 pt-1">
-                        {['To Do', 'Doing'].map((col) => (
-                          <div key={col} className="rounded bg-zinc-50 p-1.5 space-y-1.5 border border-zinc-100">
-                            <div className="text-[8px] font-semibold text-zinc-400">{col}</div>
-                            {[1, 2].map((card) => (
-                              <div
-                                key={card}
-                                className="p-1.5 rounded bg-white border border-zinc-200/70 space-y-1"
-                              >
-                                <div className="h-1.5 w-3/4 rounded bg-zinc-200" />
-                                <div
-                                  className="h-1 w-1/3 rounded"
-                                  style={{ backgroundColor: listColor || '#38bdf8' }}
-                                />
-                              </div>
-                            ))}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {listViewMode === 'timeline' && (
-                      <div className="space-y-2 pt-1">
-                        <div className="grid grid-cols-4 gap-1 text-[8px] text-zinc-400 font-mono-num border-b border-zinc-100 pb-1">
-                          <span>Mon</span>
-                          <span>Tue</span>
-                          <span>Wed</span>
-                          <span>Thu</span>
-                        </div>
-                        {[
-                          { start: 'ml-0 w-2/3', label: 'Phase 1' },
-                          { start: 'ml-4 w-3/4', label: 'Phase 2' },
-                          { start: 'ml-2 w-1/2', label: 'Launch' },
-                        ].map((bar, i) => (
-                          <div key={i} className="h-3.5 flex items-center">
+                      {listViewMode === 'kanban' && (
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          {['To Do', 'Doing'].map((col) => (
                             <div
-                              style={{ backgroundColor: listColor || '#38bdf8' }}
-                              className={`h-2.5 rounded ${bar.start} opacity-80`}
-                            />
+                              key={col}
+                              className="rounded bg-zinc-50 p-1.5 space-y-1.5 border border-zinc-100"
+                            >
+                              <div className="text-[8px] font-semibold text-zinc-400">{col}</div>
+                              {[1, 2].map((card) => (
+                                <div
+                                  key={card}
+                                  className="p-1.5 rounded bg-white border border-zinc-200/70 space-y-1"
+                                >
+                                  <div className="h-1.5 w-3/4 rounded bg-zinc-200" />
+                                  <div
+                                    className="h-1 w-1/3 rounded"
+                                    style={{ backgroundColor: listColor || '#38bdf8' }}
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {listViewMode === 'timeline' && (
+                        <div className="space-y-2 pt-1">
+                          <div className="grid grid-cols-4 gap-1 text-[8px] text-zinc-400 font-mono-num border-b border-zinc-100 pb-1">
+                            <span>Mon</span>
+                            <span>Tue</span>
+                            <span>Wed</span>
+                            <span>Thu</span>
                           </div>
-                        ))}
-                      </div>
-                    )}
+                          {[
+                            { start: 'ml-0 w-2/3', label: 'Phase 1' },
+                            { start: 'ml-4 w-3/4', label: 'Phase 2' },
+                            { start: 'ml-2 w-1/2', label: 'Launch' },
+                          ].map((bar, i) => (
+                            <div key={i} className="h-3.5 flex items-center">
+                              <div
+                                style={{ backgroundColor: listColor || '#38bdf8' }}
+                                className={`h-2.5 rounded ${bar.start} opacity-80`}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Modal Footer */}
-              <div className="flex justify-end gap-2.5 pt-5 mt-5 border-t border-zinc-100">
-                <button
-                  type="button"
-                  onClick={() => setShowListModal(false)}
-                  className="px-4 py-1.5 rounded-lg text-xs font-medium text-zinc-600 border border-zinc-200 hover:bg-zinc-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-xs"
-                >
-                  {editingListId ? 'Save' : 'Create'}
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
+                {/* Modal Footer */}
+                <div className="flex justify-end gap-2.5 pt-5 mt-5 border-t border-zinc-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowListModal(false)}
+                    className="px-4 py-1.5 rounded-lg text-xs font-medium text-zinc-600 border border-zinc-200 hover:bg-zinc-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-xs"
+                  >
+                    {editingListId ? 'Save' : 'Create'}
+                  </button>
+                </div>
+              </form>
+            </div>,
+            document.body
+          )}
 
-        {/* Modal: Create Smart Filter */}
-        {showNewFilterModal && (
-          <div
-            onClick={() => setShowNewFilterModal(false)}
-            className="fixed inset-0 z-50 bg-zinc-950/40 backdrop-blur-[2px] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-backdrop"
-          >
-            <form
-              onClick={(e) => e.stopPropagation()}
-              onSubmit={handleCreateFilter}
-              className="surface-floating rounded-t-2xl sm:rounded-xl w-full max-w-sm p-5 pb-8 sm:pb-5 space-y-4 animate-sheet-up sm:animate-modal"
+        {/* Modal: Create Smart Filter (Portaled to document.body) */}
+        {showNewFilterModal &&
+          createPortal(
+            <div
+              onClick={() => setShowNewFilterModal(false)}
+              className="fixed inset-0 z-[100] bg-zinc-950/40 backdrop-blur-[2px] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-backdrop"
             >
-              <div className="sm:hidden w-10 h-1 rounded-full bg-zinc-300 mx-auto -mt-1 mb-2" />
-              <h3 className="text-sm font-semibold text-zinc-900">Create Smart Filter</h3>
-              <div>
-                <label className="block text-xs font-medium text-zinc-600 mb-1">Filter Name</label>
-                <input
-                  type="text"
-                  required
-                  autoFocus
-                  value={filterName}
-                  onChange={(e) => setFilterName(e.target.value)}
-                  placeholder="e.g. Urgent This Week"
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-zinc-300 focus:outline-none focus:border-zinc-900"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
+              <form
+                onClick={(e) => e.stopPropagation()}
+                onSubmit={handleCreateFilter}
+                className="surface-floating rounded-t-2xl sm:rounded-xl w-full max-w-sm p-5 pb-8 sm:pb-5 space-y-4 animate-sheet-up sm:animate-modal bg-white"
+              >
+                <div className="sm:hidden w-10 h-1 rounded-full bg-zinc-300 mx-auto -mt-1 mb-2" />
+                <h3 className="text-sm font-semibold text-zinc-900">Create Smart Filter</h3>
                 <div>
-                  <label className="block text-xs font-medium text-zinc-600 mb-1">Priority</label>
-                  <select
-                    value={filterPriority}
-                    onChange={(e) =>
-                      setFilterPriority(
-                        e.target.value === 'all' ? 'all' : (Number(e.target.value) as Priority)
-                      )
-                    }
-                    className="w-full px-2.5 py-2 text-xs rounded-lg border border-zinc-300 bg-white"
-                  >
-                    <option value="all">Any Priority</option>
-                    <option value={5}>High Priority</option>
-                    <option value={3}>Medium Priority</option>
-                    <option value={1}>Low Priority</option>
-                  </select>
+                  <label className="block text-xs font-medium text-zinc-600 mb-1">
+                    Filter Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    value={filterName}
+                    onChange={(e) => setFilterName(e.target.value)}
+                    placeholder="e.g. Urgent This Week"
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-zinc-300 focus:outline-none focus:border-zinc-900"
+                  />
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-zinc-600 mb-1">Due Date</label>
-                  <select
-                    value={filterDateRange}
-                    onChange={(e) =>
-                      setFilterDateRange(
-                        e.target.value as 'any' | 'today' | 'overdue' | 'next7days'
-                      )
-                    }
-                    className="w-full px-2.5 py-2 text-xs rounded-lg border border-zinc-300 bg-white"
-                  >
-                    <option value="any">Any Date</option>
-                    <option value="today">Today</option>
-                    <option value="overdue">Overdue</option>
-                    <option value="next7days">Next 7 Days</option>
-                  </select>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-600 mb-1">Priority</label>
+                    <select
+                      value={filterPriority}
+                      onChange={(e) =>
+                        setFilterPriority(
+                          e.target.value === 'all' ? 'all' : (Number(e.target.value) as Priority)
+                        )
+                      }
+                      className="w-full px-2.5 py-2 text-xs rounded-lg border border-zinc-300 bg-white"
+                    >
+                      <option value="all">Any Priority</option>
+                      <option value={5}>High Priority</option>
+                      <option value={3}>Medium Priority</option>
+                      <option value={1}>Low Priority</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-600 mb-1">Due Date</label>
+                    <select
+                      value={filterDateRange}
+                      onChange={(e) =>
+                        setFilterDateRange(
+                          e.target.value as 'any' | 'today' | 'overdue' | 'next7days'
+                        )
+                      }
+                      className="w-full px-2.5 py-2 text-xs rounded-lg border border-zinc-300 bg-white"
+                    >
+                      <option value="any">Any Date</option>
+                      <option value="today">Today</option>
+                      <option value="overdue">Overdue</option>
+                      <option value="next7days">Next 7 Days</option>
+                    </select>
+                  </div>
                 </div>
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowNewFilterModal(false)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-600 hover:bg-zinc-100"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800"
-                >
-                  Save Filter
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowNewFilterModal(false)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-600 hover:bg-zinc-100"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800"
+                  >
+                    Save Filter
+                  </button>
+                </div>
+              </form>
+            </div>,
+            document.body
+          )}
       </aside>
     </>
   );
