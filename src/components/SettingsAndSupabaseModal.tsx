@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  Bell,
   Check,
   Cloud,
   Crown,
@@ -17,6 +18,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { getSupabaseConfig } from '../lib/supabase';
 import { ThemeId } from '../types';
+import { soundEngine } from '../utils/soundEngine';
 
 export const SettingsAndSupabaseModal: React.FC = () => {
   const {
@@ -27,6 +29,9 @@ export const SettingsAndSupabaseModal: React.FC = () => {
     openSettingsTab,
     preferences,
     updatePreferences,
+    requestNotificationPermission,
+    notificationPermission,
+    pushToast,
     setTheme,
     resetDemoWorkspace,
     clearAllWorkspaceData,
@@ -164,6 +169,61 @@ export const SettingsAndSupabaseModal: React.FC = () => {
                   onChange={(e) => updatePreferences({ soundAlertEnabled: e.target.checked })}
                   className="w-4 h-4 rounded text-zinc-900"
                 />
+              </div>
+
+              {/* Mobile & Desktop Push Notifications Card */}
+              <div className="flex items-center justify-between p-3.5 rounded-xl bg-zinc-50 border border-zinc-200/80 gap-3">
+                <div>
+                  <div className="text-xs font-semibold text-zinc-800 flex items-center gap-1.5">
+                    <Bell className="w-3.5 h-3.5 text-blue-600" />
+                    Mobile & Desktop Push Notifications
+                  </div>
+                  <div className="text-[11px] text-zinc-500">
+                    {notificationPermission === 'granted'
+                      ? 'Alerts active • Native lock screen & notification shade banners enabled'
+                      : notificationPermission === 'denied'
+                        ? 'Notifications blocked in browser permissions'
+                        : 'Allow notifications to receive real-time task alerts on this device'}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {notificationPermission !== 'granted' ? (
+                    <button
+                      type="button"
+                      onClick={requestNotificationPermission}
+                      className="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold"
+                    >
+                      Enable Alerts
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        soundEngine.playReminderAlarm();
+                        const title = 'TickTick Pro Mobile Alert 🔔';
+                        const options: NotificationOptions = {
+                          body: 'Test notification working! Your task reminders will alert on this phone.',
+                          icon: './icon-192.png',
+                          badge: './icon-192.png',
+                          tag: 'test-alert',
+                        };
+                        if ('serviceWorker' in navigator) {
+                          navigator.serviceWorker.ready.then((reg) => {
+                            reg.showNotification(title, options);
+                          }).catch(() => {
+                            try { new Notification(title, options); } catch {}
+                          });
+                        } else {
+                          try { new Notification(title, options); } catch {}
+                        }
+                        pushToast({ title: 'Test alert dispatched to this device', kind: 'success' });
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg bg-zinc-200 hover:bg-zinc-300 text-zinc-800 text-xs font-semibold"
+                    >
+                      Test Alert
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="flex items-center justify-between p-3.5 rounded-xl bg-blue-50/70 border border-blue-200/80 gap-3">

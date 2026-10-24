@@ -361,15 +361,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       soundEngine.playReminderAlarm();
     }
 
-    // 2. Dispatch native OS desktop notification if permitted
-    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-      try {
-        new Notification(`TickTick Alert: ${task.title}`, {
-          body: `${label} • Due ${task.dueDate || 'Today'} ${task.startTime || ''}`.trim(),
-          icon: '/favicon.ico',
-        });
-      } catch {
-        // ignore
+    // 2. Dispatch native OS desktop & mobile notification if permitted
+    if (
+      typeof window !== 'undefined' &&
+      'Notification' in window &&
+      Notification.permission === 'granted'
+    ) {
+      const title = `TickTick Alert: ${task.title}`;
+      const options: NotificationOptions = {
+        body: `${label} • Due ${task.dueDate || 'Today'} ${task.startTime || ''}`.trim(),
+        icon: './icon-192.png',
+        badge: './icon-192.png',
+        tag: `reminder-${task.id}`,
+      };
+
+      // Mobile Chrome / Android requires ServiceWorkerRegistration.showNotification()
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.ready
+          .then((registration) => {
+            return registration.showNotification(title, options);
+          })
+          .catch(() => {
+            try {
+              new Notification(title, options);
+            } catch {}
+          });
+      } else {
+        try {
+          new Notification(title, options);
+        } catch {}
       }
     }
 
