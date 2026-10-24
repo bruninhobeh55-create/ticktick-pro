@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   addDays,
   differenceInCalendarDays,
@@ -90,6 +90,15 @@ export const TaskWorkspace: React.FC = () => {
   const [isCountdownCollapsed, setIsCountdownCollapsed] = useState(false);
   const [isActiveSectionCollapsed, setIsActiveSectionCollapsed] = useState(false);
   const [isCompletedCollapsed, setIsCompletedCollapsed] = useState(false);
+  const [isNarrowScreen, setIsNarrowScreen] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth < 640
+  );
+
+  useEffect(() => {
+    const handleResize = () => setIsNarrowScreen(window.innerWidth < 640);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const today = startOfToday();
   const todayStr = format(today, 'yyyy-MM-dd');
@@ -417,7 +426,7 @@ export const TaskWorkspace: React.FC = () => {
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') setSelectedTaskId(task.id);
         }}
-        className={`group flex items-center gap-3 px-3 py-2 rounded-lg border cursor-pointer ${
+        className={`group flex items-center gap-2.5 sm:gap-3 px-3 py-2.5 sm:py-2 min-h-[44px] sm:min-h-[38px] rounded-lg border cursor-pointer ${
           isSelected
             ? 'bg-zinc-900/[0.04] border-zinc-300'
             : 'bg-white hover:bg-zinc-50/90 border-zinc-200/70'
@@ -621,7 +630,7 @@ export const TaskWorkspace: React.FC = () => {
             )
           )}
 
-          <h1 className="text-sm font-semibold text-zinc-900 truncate tracking-tight">
+          <h1 className="text-sm font-semibold text-zinc-900 truncate tracking-tight max-w-[120px] sm:max-w-[240px] md:max-w-none">
             {headerTitle}
           </h1>
 
@@ -697,7 +706,7 @@ export const TaskWorkspace: React.FC = () => {
             aria-label="Sort tasks by"
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-            className="text-xs px-2 sm:px-2.5 py-1.5 rounded-lg border border-zinc-200/80 bg-white text-zinc-600 focus:outline-none focus:border-zinc-900 max-w-[92px] sm:max-w-none"
+            className="text-xs px-2 sm:px-2.5 py-1.5 rounded-lg border border-zinc-200/80 bg-white text-zinc-600 focus:outline-none focus:border-zinc-900 max-w-[78px] sm:max-w-none"
           >
             <option value="priority">Priority</option>
             <option value="dueDate">Due Date</option>
@@ -761,7 +770,11 @@ export const TaskWorkspace: React.FC = () => {
                 type="text"
                 value={quickInput}
                 onChange={(e) => setQuickInput(e.target.value)}
-                placeholder={`+ Add task to "${headerTitle}"... Try NLP: "Design API tomorrow 2pm #supabase !high"`}
+                placeholder={
+                  isNarrowScreen
+                    ? `+ Add task... Try NLP`
+                    : `+ Add task to "${headerTitle}"... Try NLP: "Design API tomorrow 2pm #supabase !high"`
+                }
                 className="flex-1 min-w-0 bg-transparent text-xs text-zinc-900 placeholder:text-zinc-400 focus:outline-none"
               />
 

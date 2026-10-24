@@ -21,10 +21,10 @@ export const StatisticsModule: React.FC = () => {
   const last7Days = Array.from({ length: 7 }, (_, i) => subDays(today, 6 - i));
 
   return (
-    <div className="flex-1 h-full bg-zinc-50/70 overflow-y-auto p-6">
-      <div className="max-w-5xl mx-auto space-y-6">
+    <div className="flex-1 h-full bg-zinc-50/70 overflow-y-auto p-3.5 sm:p-6">
+      <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6">
         {/* Header & TickTick Achievement Score Card (Disciplined Dark Zinc, Zero AI Slop Gradients) */}
-        <div className="rounded-2xl bg-zinc-900 text-zinc-100 p-6 border border-zinc-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="rounded-2xl bg-zinc-900 text-zinc-100 p-4 sm:p-6 border border-zinc-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="space-y-1.5">
             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-amber-400/10 border border-amber-400/20 text-amber-300 text-[11px] font-semibold">
               <Award className="w-3.5 h-3.5" strokeWidth={1.75} /> Executive Telemetry

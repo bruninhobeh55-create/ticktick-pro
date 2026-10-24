@@ -94,25 +94,25 @@ export const SettingsAndSupabaseModal: React.FC = () => {
       >
         <div className="sm:hidden w-10 h-1 rounded-full bg-zinc-300 mx-auto mt-2.5 shrink-0" />
         {/* Top Modal Header */}
-        <div className="px-6 py-4 border-b border-zinc-200/80 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Settings className="w-4 h-4 text-zinc-700" strokeWidth={1.75} />
-            <h2 className="text-sm font-semibold text-zinc-900 tracking-tight">
-              Workspace Settings, Themes & Supabase Backend
+        <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-zinc-200/80 flex items-center justify-between">
+          <div className="flex items-center gap-2 min-w-0">
+            <Settings className="w-4 h-4 text-zinc-700 shrink-0" strokeWidth={1.75} />
+            <h2 className="text-sm font-semibold text-zinc-900 tracking-tight truncate">
+              Settings & Integrations
             </h2>
           </div>
           <button
             onClick={() => setIsSettingsOpen(false)}
             title="Close Settings"
             aria-label="Close Settings"
-            className="p-1.5 rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+            className="p-1.5 rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 shrink-0"
           >
             <X className="w-4 h-4" strokeWidth={1.75} />
           </button>
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex border-b border-zinc-200/80 bg-zinc-50 px-6 gap-2 overflow-x-auto">
+        <div className="flex border-b border-zinc-200/80 bg-zinc-50 px-3 sm:px-6 gap-2 overflow-x-auto no-scrollbar">
           {(
             [
               ['general', 'General', <Settings className="w-3.5 h-3.5" strokeWidth={1.75} />],
@@ -138,7 +138,7 @@ export const SettingsAndSupabaseModal: React.FC = () => {
         </div>
 
         {/* Tab Content */}
-        <div className="p-6 overflow-y-auto space-y-5 flex-1">
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-5 flex-1">
           {settingsInitialTab === 'general' && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

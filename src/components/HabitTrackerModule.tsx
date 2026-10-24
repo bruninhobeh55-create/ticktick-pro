@@ -9,6 +9,7 @@ import {
   Plus,
   Sparkles,
   Trash2,
+  X,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Habit, HabitLogEntry } from '../types';
@@ -87,7 +88,9 @@ export const HabitTrackerModule: React.FC = () => {
     return streak;
   };
 
-  const selectedHabit = habits.find((h) => h.id === selectedHabitId) || habits[0];
+  const selectedHabit =
+    habits.find((h) => h.id === selectedHabitId) ||
+    (typeof window !== 'undefined' && window.innerWidth >= 1024 ? habits[0] : null);
 
   const openEditHabitModal = (habit: Habit) => {
     setEditingHabitId(habit.id);
@@ -177,7 +180,12 @@ export const HabitTrackerModule: React.FC = () => {
           <div className="overflow-x-auto">
             <div className="min-w-[540px]">
               <div className="grid grid-cols-[minmax(170px,1fr)_repeat(7,40px)_64px] items-center bg-zinc-50 px-4 py-2.5 border-b border-zinc-200/80 text-[11px] font-semibold text-zinc-500">
-                <div>Habit & Daily Goal</div>
+                <div>
+                  Habit & Daily Goal
+                  <span className="sm:hidden font-normal text-[10px] text-zinc-400 ml-1">
+                    (← swipe days →)
+                  </span>
+                </div>
                 {last7Days.map((d) => {
                   const dStr = format(d, 'yyyy-MM-dd');
                   return (
@@ -354,6 +362,13 @@ export const HabitTrackerModule: React.FC = () => {
                 className="p-1.5 rounded-lg text-zinc-400 hover:text-rose-600 hover:bg-rose-50"
               >
                 <Trash2 className="w-4 h-4" strokeWidth={1.75} />
+              </button>
+              <button
+                onClick={() => setSelectedHabitId(null)}
+                title="Close Inspector"
+                className="lg:hidden p-1.5 rounded-lg text-zinc-400 hover:text-zinc-800 hover:bg-zinc-200/60"
+              >
+                <X className="w-4 h-4" strokeWidth={1.75} />
               </button>
             </div>
           </div>

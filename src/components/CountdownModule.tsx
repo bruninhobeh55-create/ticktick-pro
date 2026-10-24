@@ -36,8 +36,8 @@ export const CountdownModule: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 h-full bg-zinc-50/60 overflow-y-auto p-6">
-      <div className="max-w-5xl mx-auto space-y-8">
+    <div className="flex-1 h-full bg-zinc-50/60 overflow-y-auto p-3.5 sm:p-6">
+      <div className="max-w-5xl mx-auto space-y-6 sm:space-y-8">
         {/* Countdown Section */}
         <section className="space-y-4">
           <div className="flex items-center justify-between">

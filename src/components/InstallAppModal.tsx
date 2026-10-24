@@ -60,7 +60,7 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-zinc-200/80 overflow-hidden animate-scale-in"
+        className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-zinc-200/80 overflow-hidden max-h-[90dvh] flex flex-col animate-scale-in"
       >
         {/* Header */}
         <div className="relative px-6 pt-6 pb-4 bg-gradient-to-br from-blue-500/10 via-indigo-500/5 to-transparent border-b border-zinc-100">
@@ -91,7 +91,7 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
         </div>
 
         {/* Content Body */}
-        <div className="p-6 space-y-4">
+        <div className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">
           {isStandalone ? (
             <div className="flex items-start gap-3 p-3.5 rounded-xl bg-emerald-50 border border-emerald-200/70 text-emerald-900">
               <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />

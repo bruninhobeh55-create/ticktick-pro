@@ -306,7 +306,15 @@ export const CalendarModule: React.FC = () => {
             )}
 
             {(subView === 'week' || subView === 'multiday' || subView === 'day') && (
-              <div className="flex flex-col min-w-[680px]">
+              <div
+                className={`flex flex-col ${
+                  subView === 'day'
+                    ? 'w-full min-w-0'
+                    : subView === 'multiday'
+                      ? 'min-w-[340px] sm:min-w-0 w-full'
+                      : 'min-w-[640px]'
+                }`}
+              >
                 {(() => {
                   const cols =
                     subView === 'week'
@@ -443,7 +451,7 @@ export const CalendarModule: React.FC = () => {
             )}
 
             {subView === 'agenda' && (
-              <div className="max-w-3xl mx-auto p-6 space-y-5">
+              <div className="max-w-3xl mx-auto p-3 sm:p-6 space-y-4 sm:space-y-5">
                 {Array.from({ length: 7 }, (_, i) => addDays(cursorDate, i)).map((day) => {
                   const dStr = format(day, 'yyyy-MM-dd');
                   const dayTasks = activeTasks.filter((t) => t.dueDate === dStr);

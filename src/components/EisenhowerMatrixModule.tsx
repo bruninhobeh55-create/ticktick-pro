@@ -60,6 +60,10 @@ export const EisenhowerMatrixModule: React.FC = () => {
     q4: false,
   });
 
+  const [mobileQuadrantFilter, setMobileQuadrantFilter] = useState<
+    'all' | 'q1' | 'q2' | 'q3' | 'q4'
+  >('all');
+
   // Popover state inside the floating task inspector card (opens only when a task in a quadrant is clicked)
   const [matrixPopoverTaskId, setMatrixPopoverTaskId] = useState<string | null>(null);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
@@ -232,20 +236,70 @@ export const EisenhowerMatrixModule: React.FC = () => {
             <Grid2X2 className="w-4 h-4 text-zinc-700" strokeWidth={1.75} />
             Eisenhower Matrix
           </h1>
+          <span className="text-xs font-mono-num text-zinc-400">
+            {matrixTasks.filter((t) => t.status !== 'completed').length} active
+          </span>
+        </div>
+
+        {/* Mobile Segmented Quadrant Tabs (<768px) */}
+        <div className="md:hidden flex items-center gap-1.5 overflow-x-auto pb-2.5 mb-2 no-scrollbar shrink-0">
+          <button
+            type="button"
+            onClick={() => setMobileQuadrantFilter('all')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
+              mobileQuadrantFilter === 'all'
+                ? 'bg-zinc-900 text-white font-semibold'
+                : 'bg-white border border-zinc-200/80 text-zinc-600 hover:bg-zinc-100'
+            }`}
+          >
+            All Quadrants ({matrixTasks.filter((t) => t.status !== 'completed').length})
+          </button>
+          {quadrants.map((q) => {
+            const count = matrixTasks.filter(
+              (t) => resolveTaskQuadrant(t) === q.id && t.status !== 'completed'
+            ).length;
+            const isSelected = mobileQuadrantFilter === q.id;
+            return (
+              <button
+                key={q.id}
+                type="button"
+                onClick={() => setMobileQuadrantFilter(q.id)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
+                  isSelected
+                    ? 'bg-zinc-900 text-white font-semibold'
+                    : 'bg-white border border-zinc-200/80 text-zinc-600 hover:bg-zinc-100'
+                }`}
+              >
+                <span
+                  className={`w-3.5 h-3.5 rounded-full text-[8px] font-bold flex items-center justify-center ${
+                    isSelected ? 'bg-white/20 text-white' : q.badgeBg
+                  }`}
+                >
+                  {q.roman}
+                </span>
+                <span>{q.title.split('&')[0].trim()}</span>
+                <span className="font-mono-num text-[11px] opacity-70">({count})</span>
+              </button>
+            );
+          })}
         </div>
 
         {/* 2x2 Quadrants Grid */}
-        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3.5 min-h-[540px]">
+        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3.5 min-h-[380px] md:min-h-[540px]">
           {quadrants.map((q) => {
             const qAllTasks = matrixTasks.filter((t) => resolveTaskQuadrant(t) === q.id);
             const qActiveTasks = qAllTasks.filter((t) => t.status !== 'completed');
             const qCompletedTasks = qAllTasks.filter((t) => t.status === 'completed');
             const isCompCollapsed = collapsedCompleted[q.id];
+            const isHiddenOnMobile =
+              mobileQuadrantFilter !== 'all' && mobileQuadrantFilter !== q.id;
 
             return (
               <section
                 key={q.id}
-                className="bg-white rounded-xl border border-zinc-200/80 shadow-2xs flex flex-col overflow-hidden"
+                className={`${
+                  isHiddenOnMobile ? 'hidden md:flex' : 'flex'
+                } bg-white rounded-xl border border-zinc-200/80 shadow-2xs flex-col overflow-hidden`}
               >
                 {/* Quadrant Header */}
                 <div className="px-3.5 py-2.5 flex items-center justify-between">

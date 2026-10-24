@@ -148,12 +148,12 @@ export const PomodoroModule: React.FC = () => {
 
           {/* Phase Pills for Pomodoro Mode */}
           {pomoMode === 'pomo' && (
-            <div className="flex items-center gap-1.5 font-mono-num">
+            <div className="flex flex-wrap sm:flex-nowrap justify-center items-center gap-1.5 font-mono-num">
               {(
                 [
                   ['work', `Focus (${preferences.pomoDuration}m)`],
-                  ['short_break', `Short Break (${preferences.shortBreakDuration}m)`],
-                  ['long_break', `Long Break (${preferences.longBreakDuration}m)`],
+                  ['short_break', `Short (${preferences.shortBreakDuration}m)`],
+                  ['long_break', `Long (${preferences.longBreakDuration}m)`],
                 ] as const
               ).map(([phaseId, label]) => (
                 <button
@@ -194,7 +194,7 @@ export const PomodoroModule: React.FC = () => {
           </div>
 
           {/* Circular Progress Dial */}
-          <div className="relative w-60 h-60 flex items-center justify-center">
+          <div className="relative w-48 h-48 sm:w-56 sm:h-56 md:w-60 md:h-60 flex items-center justify-center">
             <svg className="w-full h-full -rotate-90" viewBox="0 0 260 260">
               <circle
                 cx="130"
@@ -218,10 +218,10 @@ export const PomodoroModule: React.FC = () => {
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-              <span className="text-5xl font-bold font-mono-num tracking-tight text-zinc-900">
+              <span className="text-4xl sm:text-5xl font-bold font-mono-num tracking-tight text-zinc-900">
                 {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
               </span>
-              <span className="text-xs font-medium text-zinc-400 mt-1.5">
+              <span className="text-xs font-medium text-zinc-400 mt-1 sm:mt-1.5">
                 {pomoRunning ? 'Deep work in progress' : 'Ready to focus'}
               </span>
             </div>
