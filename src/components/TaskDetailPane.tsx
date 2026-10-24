@@ -129,13 +129,13 @@ export const TaskDetailPane: React.FC = () => {
       {/* Mobile & Tablet Backdrop (<1024px) */}
       <div
         onClick={() => setSelectedTaskId(null)}
-        className="lg:hidden fixed inset-0 z-40 bg-zinc-950/40 backdrop-blur-[2px] animate-backdrop"
+        className="lg:hidden fixed inset-0 z-50 bg-zinc-950/40 backdrop-blur-[2px] animate-backdrop"
       />
 
       <aside
         aria-label="Task Detail Inspector"
         style={{ '--right-pane-width': `${rightPaneWidth}px` } as React.CSSProperties}
-        className="fixed inset-x-0 bottom-0 top-10 z-50 rounded-t-2xl shadow-2xl lg:shadow-none lg:rounded-none lg:static lg:z-10 lg:w-[var(--right-pane-width)] relative shrink-0 border-t lg:border-t-0 lg:border-l border-zinc-200/80 bg-white flex flex-col lg:h-full overflow-hidden animate-sheet-up lg:[animation:none]"
+        className="fixed inset-x-0 bottom-0 top-6 sm:top-10 z-50 rounded-t-2xl shadow-2xl bg-white flex flex-col overflow-hidden animate-sheet-up lg:static lg:top-auto lg:z-10 lg:w-[var(--right-pane-width)] lg:h-full lg:rounded-none lg:shadow-none lg:border-t-0 lg:border-l border-zinc-200/80 lg:animate-none"
       >
         {/* PC Left-Edge Drag Resize Handle */}
         <div
@@ -158,13 +158,13 @@ export const TaskDetailPane: React.FC = () => {
           <div className="w-10 h-1 rounded-full bg-zinc-300" />
         </div>
 
-        {/* Top Bar: Checkbox, Date, Priority, Actions */}
-        <div className="h-12 lg:h-13 px-4 border-b border-zinc-200/80 flex items-center justify-between gap-2 shrink-0">
-          <div className="flex items-center gap-2.5">
+        {/* Top Bar: Checkbox, List, Priority, Close */}
+        <div className="h-12 lg:h-13 px-3 sm:px-4 border-b border-zinc-200/80 flex items-center justify-between gap-2 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
             <button
               onClick={() => toggleTaskStatus(task.id)}
               aria-label="Toggle task completion"
-              className={`w-4 h-4 rounded-[5px] border-[1.5px] flex items-center justify-center ${
+              className={`w-4 h-4 rounded-[5px] border-[1.5px] flex items-center justify-center shrink-0 ${
                 isDone
                   ? 'bg-zinc-900 border-zinc-900 text-white'
                   : task.priority === 5
@@ -184,7 +184,7 @@ export const TaskDetailPane: React.FC = () => {
               aria-label="Task List"
               value={task.listId}
               onChange={(e) => updateTask(task.id, { listId: e.target.value }, 'Moved to another list')}
-              className="text-xs font-medium text-zinc-700 bg-zinc-100 px-2 py-1 rounded-md border border-zinc-200/70 focus:outline-none max-w-[140px] sm:max-w-none truncate"
+              className="text-xs font-medium text-zinc-700 bg-zinc-100 px-2 py-1 rounded-md border border-zinc-200/70 focus:outline-none max-w-[110px] sm:max-w-[160px] truncate"
             >
               <option value="inbox">Inbox</option>
               {lists.map((l) => (
@@ -195,37 +195,64 @@ export const TaskDetailPane: React.FC = () => {
             </select>
           </div>
 
-          {/* Priority & Quick Action Icons */}
-          <div className="flex items-center gap-0.5">
-            {([5, 3, 1, 0] as Priority[]).map((p) => (
-              <button
-                key={p}
-                onClick={() => updateTask(task.id, { priority: p }, `Changed priority to P${p}`)}
-                title={`Priority ${p}`}
-                className={`p-1.5 rounded-md ${
-                  task.priority === p ? 'bg-zinc-100 font-semibold' : 'opacity-45 hover:opacity-100'
-                }`}
-              >
-                <Flag
-                  strokeWidth={1.75}
-                  className={`w-3.5 h-3.5 ${
-                    p === 5
-                      ? 'text-rose-500 fill-rose-500'
-                      : p === 3
-                        ? 'text-amber-500 fill-amber-500'
-                        : p === 1
-                          ? 'text-blue-500 fill-blue-500'
-                          : 'text-zinc-400'
-                  }`}
-                />
-              </button>
-            ))}
+          {/* Right Side: Priority Selector + Close Button */}
+          <div className="flex items-center gap-1 shrink-0">
+            {/* Mobile: Compact Priority Dropdown */}
+            <select
+              aria-label="Task Priority"
+              value={task.priority}
+              onChange={(e) =>
+                updateTask(task.id, { priority: Number(e.target.value) as Priority }, `Changed priority`)
+              }
+              className={`sm:hidden text-xs font-semibold px-2 py-1 rounded-md border text-center ${
+                task.priority === 5
+                  ? 'bg-rose-50 border-rose-200 text-rose-700'
+                  : task.priority === 3
+                    ? 'bg-amber-50 border-amber-200 text-amber-700'
+                    : task.priority === 1
+                      ? 'bg-blue-50 border-blue-200 text-blue-700'
+                      : 'bg-zinc-50 border-zinc-200 text-zinc-600'
+              }`}
+            >
+              <option value={5}>P5 High</option>
+              <option value={3}>P3 Med</option>
+              <option value={1}>P1 Low</option>
+              <option value={0}>No Priority</option>
+            </select>
 
+            {/* Tablet / Desktop: 4 Flag Buttons */}
+            <div className="hidden sm:flex items-center gap-0.5">
+              {([5, 3, 1, 0] as Priority[]).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => updateTask(task.id, { priority: p }, `Changed priority to P${p}`)}
+                  title={`Priority ${p}`}
+                  className={`p-1.5 rounded-md ${
+                    task.priority === p ? 'bg-zinc-100 font-semibold' : 'opacity-45 hover:opacity-100'
+                  }`}
+                >
+                  <Flag
+                    strokeWidth={1.75}
+                    className={`w-3.5 h-3.5 ${
+                      p === 5
+                        ? 'text-rose-500 fill-rose-500'
+                        : p === 3
+                          ? 'text-amber-500 fill-amber-500'
+                          : p === 1
+                            ? 'text-blue-500 fill-blue-500'
+                            : 'text-zinc-400'
+                    }`}
+                  />
+                </button>
+              ))}
+            </div>
+
+            {/* Prominent Close Button */}
             <button
               onClick={() => setSelectedTaskId(null)}
               title="Close Detail Pane"
               aria-label="Close Detail Pane"
-              className="p-1.5 rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 ml-1"
+              className="p-1.5 rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 bg-zinc-50 border border-zinc-200/80 ml-0.5"
             >
               <X className="w-4 h-4" strokeWidth={1.75} />
             </button>
@@ -283,7 +310,7 @@ export const TaskDetailPane: React.FC = () => {
           </div>
 
           {/* Schedule, Duration & Recurrence Grid (Premium) */}
-          <div className="grid grid-cols-2 gap-2.5 p-3 rounded-xl bg-zinc-50/80 border border-zinc-200/80 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-3 rounded-xl bg-zinc-50/80 border border-zinc-200/80 text-xs">
             <div>
               <label className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
                 <Calendar className="w-3 h-3" strokeWidth={1.75} /> Start Date
@@ -809,7 +836,7 @@ export const TaskDetailPane: React.FC = () => {
         </div>
 
         {/* Footer Actions: Duplicate & Trash */}
-        <div className="h-11 px-4 border-t border-zinc-200/80 flex items-center justify-between text-xs text-zinc-400 shrink-0 font-mono-num bg-white">
+        <div className="min-h-11 px-4 border-t border-zinc-200/80 flex items-center justify-between text-xs text-zinc-400 shrink-0 font-mono-num bg-white pb-[env(safe-area-inset-bottom,0px)]">
           <span>Updated {task.updatedAt}</span>
           <div className="flex items-center gap-1.5">
             <button
