@@ -243,4 +243,45 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
     await page.getByLabel('Close', { exact: true }).click();
     await expect(page.getByRole('heading', { name: 'TickTick Pro', level: 3 })).not.toBeVisible();
   });
+
+  test('Filters and Tags Accordion Minimization and Horizontal/Vertical Tag Layouts', async ({
+    page,
+    isMobile,
+  }) => {
+    await page.goto('/');
+
+    if (isMobile) {
+      // Open mobile sidebar drawer
+      await page.locator('button[aria-label="Toggle Sidebar"]').click();
+    }
+
+    // 1. Accordion Minimization for Filters
+    const toggleFiltersBtn = page.locator('button[aria-label="Toggle Filters Section"]');
+    await expect(toggleFiltersBtn).toBeVisible();
+    await toggleFiltersBtn.click(); // collapse
+    await expect(page.getByText('High Priority Deep Work')).not.toBeVisible();
+
+    await toggleFiltersBtn.click(); // expand
+    await expect(page.getByText('High Priority Deep Work')).toBeVisible();
+
+    // 2. Accordion Minimization for Tags
+    const toggleTagsBtn = page.locator('button[aria-label="Toggle Tags Section"]');
+    await expect(toggleTagsBtn).toBeVisible();
+    await toggleTagsBtn.click(); // collapse
+    await expect(page.locator('button[aria-label="Horizontal Tag Layout"]')).toBeVisible();
+
+    await toggleTagsBtn.click(); // expand
+
+    // 3. Horizontal vs Vertical Tag Layout Switcher
+    const horizLayoutBtn = page.locator('button[aria-label="Horizontal Tag Layout"]');
+    const vertLayoutBtn = page.locator('button[aria-label="Vertical Tag Layout"]');
+
+    // Switch to Horizontal Pills
+    await horizLayoutBtn.click();
+    await expect(page.getByText('#deep-work').first()).toBeVisible();
+
+    // Switch to Vertical List
+    await vertLayoutBtn.click();
+    await expect(page.getByText('deep-work', { exact: true }).first()).toBeVisible();
+  });
 });

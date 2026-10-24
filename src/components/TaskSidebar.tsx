@@ -22,6 +22,7 @@ import {
   Hash,
   Inbox,
   Layers,
+  LayoutGrid,
   List as ListIcon,
   MoreHorizontal,
   Pencil,
@@ -117,6 +118,51 @@ export const TaskSidebar: React.FC = () => {
 
   // Blank Workspace Confirmation State
   const [confirmBlankReset, setConfirmBlankReset] = useState(false);
+
+  // Filters and Tags Accordion & Layout States
+  const [isFiltersCollapsed, setIsFiltersCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('ticktick_filters_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const [isTagsCollapsed, setIsTagsCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('ticktick_tags_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const [tagLayout, setTagLayout] = useState<'vertical' | 'horizontal'>(() => {
+    try {
+      return (
+        (localStorage.getItem('ticktick_tag_layout') as 'vertical' | 'horizontal') || 'horizontal'
+      );
+    } catch {
+      return 'horizontal';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('ticktick_filters_collapsed', String(isFiltersCollapsed));
+    } catch {}
+  }, [isFiltersCollapsed]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('ticktick_tags_collapsed', String(isTagsCollapsed));
+    } catch {}
+  }, [isTagsCollapsed]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('ticktick_tag_layout', tagLayout);
+    } catch {}
+  }, [tagLayout]);
 
   // Close context menu when clicking outside
   useEffect(() => {
@@ -669,229 +715,389 @@ export const TaskSidebar: React.FC = () => {
         {/* Smart Custom Filters */}
         <div className="px-2.5 py-2">
           <div className="flex items-center justify-between px-2 mb-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-              Filters
-            </span>
             <button
-              onClick={() => setShowNewFilterModal(true)}
+              type="button"
+              onClick={() => setIsFiltersCollapsed((v) => !v)}
+              aria-label="Toggle Filters Section"
+              className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400 hover:text-zinc-700 transition-colors cursor-pointer"
+            >
+              {isFiltersCollapsed ? (
+                <ChevronRight className="w-3.5 h-3.5 text-zinc-400 shrink-0" strokeWidth={1.75} />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5 text-zinc-400 shrink-0" strokeWidth={1.75} />
+              )}
+              <span>Filters ({customFilters.length})</span>
+            </button>
+            <button
+              onClick={() => {
+                setIsFiltersCollapsed(false);
+                setShowNewFilterModal(true);
+              }}
               title="Create Smart Filter"
+              aria-label="Create Smart Filter"
               className="p-1 rounded-md hover:bg-zinc-200/70 text-zinc-400 hover:text-zinc-700"
             >
               <Plus className="w-3.5 h-3.5" strokeWidth={1.75} />
             </button>
           </div>
-          <div className="space-y-0.5">
-            {customFilters.map((flt) => {
-              const isSelected = sidebarSelection.kind === 'filter' && sidebarSelection.id === flt.id;
-              return (
-                <div
-                  key={flt.id}
-                  className={`group flex items-center justify-between px-2.5 py-2 md:py-1.5 rounded-lg text-xs cursor-pointer ${
-                    isSelected
-                      ? 'bg-zinc-900/[0.06] text-zinc-900 font-semibold'
-                      : 'text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-900'
-                  }`}
-                  onClick={() => handleSelectAndCloseOnMobile({ kind: 'filter', id: flt.id })}
-                >
-                  <span className="flex items-center gap-2 truncate">
-                    <Filter className="w-3.5 h-3.5 shrink-0" style={{ color: flt.color }} strokeWidth={1.75} />
-                    <span className="truncate">{flt.name}</span>
-                  </span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteCustomFilter(flt.id);
-                    }}
-                    title="Delete filter"
-                    className="md:opacity-0 md:group-hover:opacity-100 text-zinc-400 hover:text-rose-500 p-0.5"
-                  >
-                    <Trash2 className="w-3 h-3" strokeWidth={1.75} />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+          {!isFiltersCollapsed && (
+            <div className="space-y-0.5 animate-accordion-down">
+              {customFilters.length === 0 ? (
+                <div className="px-2 py-1 text-[11px] text-zinc-400 italic">No custom filters yet</div>
+              ) : (
+                customFilters.map((flt) => {
+                  const isSelected =
+                    sidebarSelection.kind === 'filter' && sidebarSelection.id === flt.id;
+                  return (
+                    <div
+                      key={flt.id}
+                      className={`group flex items-center justify-between px-2.5 py-2 md:py-1.5 rounded-lg text-xs cursor-pointer ${
+                        isSelected
+                          ? 'bg-zinc-900/[0.06] text-zinc-900 font-semibold'
+                          : 'text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-900'
+                      }`}
+                      onClick={() => handleSelectAndCloseOnMobile({ kind: 'filter', id: flt.id })}
+                    >
+                      <span className="flex items-center gap-2 truncate">
+                        <Filter
+                          className="w-3.5 h-3.5 shrink-0"
+                          style={{ color: flt.color }}
+                          strokeWidth={1.75}
+                        />
+                        <span className="truncate">{flt.name}</span>
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteCustomFilter(flt.id);
+                        }}
+                        title="Delete filter"
+                        className="md:opacity-0 md:group-hover:opacity-100 text-zinc-400 hover:text-rose-500 p-0.5"
+                      >
+                        <Trash2 className="w-3 h-3" strokeWidth={1.75} />
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
         </div>
 
         <div className="border-t border-zinc-200/70 mx-3 my-1" />
 
-        {/* Tags Section (with Three-Dots Menu & Helper Card) */}
+        {/* Tags Section (with Accordion, Vertical & Horizontal Wrap Layouts, Three-Dots Menu) */}
         <div className="px-2.5 py-2">
           <div className="flex items-center justify-between px-2 mb-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-              Tags ({tags.length})
-            </span>
             <button
-              onClick={() => setShowNewTagInput((v) => !v)}
-              title="New Tag"
-              aria-label="New Tag"
-              className="p-1 rounded-md hover:bg-zinc-200/70 text-zinc-400 hover:text-zinc-700"
+              type="button"
+              onClick={() => setIsTagsCollapsed((v) => !v)}
+              aria-label="Toggle Tags Section"
+              className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400 hover:text-zinc-700 transition-colors cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5" strokeWidth={1.75} />
+              {isTagsCollapsed ? (
+                <ChevronRight className="w-3.5 h-3.5 text-zinc-400 shrink-0" strokeWidth={1.75} />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5 text-zinc-400 shrink-0" strokeWidth={1.75} />
+              )}
+              <span>Tags ({tags.length})</span>
             </button>
+
+            <div className="flex items-center gap-1">
+              {/* Layout Mode Segmented Control: Vertical List vs Horizontal Pills */}
+              <div className="flex items-center bg-zinc-200/60 p-0.5 rounded-md">
+                <button
+                  type="button"
+                  onClick={() => setTagLayout('vertical')}
+                  title="Vertical List Layout"
+                  aria-label="Vertical Tag Layout"
+                  className={`p-1 rounded text-xs transition-colors ${
+                    tagLayout === 'vertical'
+                      ? 'bg-white text-zinc-900 shadow-2xs font-semibold'
+                      : 'text-zinc-400 hover:text-zinc-700'
+                  }`}
+                >
+                  <ListIcon className="w-3 h-3" strokeWidth={1.75} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTagLayout('horizontal')}
+                  title="Horizontal Pills Layout"
+                  aria-label="Horizontal Tag Layout"
+                  className={`p-1 rounded text-xs transition-colors ${
+                    tagLayout === 'horizontal'
+                      ? 'bg-white text-zinc-900 shadow-2xs font-semibold'
+                      : 'text-zinc-400 hover:text-zinc-700'
+                  }`}
+                >
+                  <LayoutGrid className="w-3 h-3" strokeWidth={1.75} />
+                </button>
+              </div>
+
+              <button
+                onClick={() => {
+                  setIsTagsCollapsed(false);
+                  setShowNewTagInput((v) => !v);
+                }}
+                title="New Tag"
+                aria-label="New Tag"
+                className="p-1 rounded-md hover:bg-zinc-200/70 text-zinc-400 hover:text-zinc-700"
+              >
+                <Plus className="w-3.5 h-3.5" strokeWidth={1.75} />
+              </button>
+            </div>
           </div>
 
-          {showNewTagInput && (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (newTagName.trim()) {
-                  addTag(newTagName, '#3b66f5');
-                  setNewTagName('');
-                  setShowNewTagInput(false);
-                }
-              }}
-              className="mb-2 px-1 animate-popover"
-            >
-              <input
-                type="text"
-                value={newTagName}
-                onChange={(e) => setNewTagName(e.target.value)}
-                placeholder="#tag name + Enter..."
-                autoFocus
-                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-zinc-300 bg-white focus:outline-none focus:border-zinc-900"
-              />
-            </form>
-          )}
+          {!isTagsCollapsed && (
+            <div className="animate-accordion-down">
+              {showNewTagInput && (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (newTagName.trim()) {
+                      addTag(newTagName, '#3b66f5');
+                      setNewTagName('');
+                      setShowNewTagInput(false);
+                    }
+                  }}
+                  className="mb-2 px-1 animate-popover"
+                >
+                  <input
+                    type="text"
+                    value={newTagName}
+                    onChange={(e) => setNewTagName(e.target.value)}
+                    placeholder="#tag name + Enter..."
+                    autoFocus
+                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-zinc-300 bg-white focus:outline-none focus:border-zinc-900"
+                  />
+                </form>
+              )}
 
-          {/* Inline Tag Edit Form */}
-          {editingTagId && (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (editingTagName.trim()) {
-                  updateTag(editingTagId, editingTagName, editingTagColor);
-                }
-                setEditingTagId(null);
-              }}
-              className="mb-2 p-2 rounded-lg bg-white border border-zinc-300 space-y-2 animate-popover"
-            >
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-                Edit Tag
-              </div>
-              <input
-                type="text"
-                value={editingTagName}
-                onChange={(e) => setEditingTagName(e.target.value)}
-                autoFocus
-                className="w-full px-2 py-1 text-xs rounded border border-zinc-200 focus:outline-none focus:border-zinc-900"
-              />
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1">
-                  {['#2563eb', '#059669', '#d97706', '#e11d48', '#7c3aed', '#0d9488'].map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setEditingTagColor(c)}
-                      style={{ backgroundColor: c }}
-                      className={`w-4 h-4 rounded-full ${
-                        editingTagColor === c ? 'ring-2 ring-offset-1 ring-zinc-900' : ''
-                      }`}
-                    />
-                  ))}
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setEditingTagId(null)}
-                    className="px-2 py-0.5 rounded text-[10px] text-zinc-500 hover:bg-zinc-100"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-2 py-0.5 rounded text-[10px] font-semibold bg-zinc-900 text-white"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-            </form>
-          )}
-
-          {tags.length === 0 ? (
-            <div className="mx-1 p-3 rounded-lg bg-zinc-200/50 text-[11px] text-zinc-500 leading-relaxed">
-              Categorize your tasks with tags. Quickly select a tag by typing{' '}
-              <span className="font-mono font-semibold text-zinc-700">'#'</span> when adding a task
-            </div>
-          ) : (
-            <div className="space-y-0.5">
-              {tags.map((tag) => {
-                const isSelected = sidebarSelection.kind === 'tag' && sidebarSelection.id === tag.name;
-                const isTagMenuOpen = openMenu?.kind === 'tag' && openMenu.id === tag.id;
-                return (
-                  <div
-                    key={tag.id}
-                    onClick={() => handleSelectAndCloseOnMobile({ kind: 'tag', id: tag.name })}
-                    className={`relative group flex items-center justify-between px-2.5 py-1.5 md:py-1 rounded-lg text-xs cursor-pointer ${
-                      isSelected
-                        ? 'bg-zinc-900/[0.06] text-zinc-900 font-semibold'
-                        : 'text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-900'
-                    }`}
-                  >
-                    <span className="flex items-center gap-1.5 truncate min-w-0">
-                      <Hash
-                        className="w-3 h-3 shrink-0"
-                        style={{ color: tag.color }}
-                        strokeWidth={1.75}
-                      />
-                      <span className="truncate">{tag.name}</span>
-                    </span>
-                    <div className="flex items-center gap-0.5 shrink-0">
+              {/* Inline Tag Edit Form */}
+              {editingTagId && (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (editingTagName.trim()) {
+                      updateTag(editingTagId, editingTagName, editingTagColor);
+                    }
+                    setEditingTagId(null);
+                  }}
+                  className="mb-2 p-2 rounded-lg bg-white border border-zinc-300 space-y-2 animate-popover"
+                >
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                    Edit Tag
+                  </div>
+                  <input
+                    type="text"
+                    value={editingTagName}
+                    onChange={(e) => setEditingTagName(e.target.value)}
+                    autoFocus
+                    className="w-full px-2 py-1 text-xs rounded border border-zinc-200 focus:outline-none focus:border-zinc-900"
+                  />
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1">
+                      {['#2563eb', '#059669', '#d97706', '#e11d48', '#7c3aed', '#0d9488'].map(
+                        (c) => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => setEditingTagColor(c)}
+                            style={{ backgroundColor: c }}
+                            className={`w-4 h-4 rounded-full ${
+                              editingTagColor === c ? 'ring-2 ring-offset-1 ring-zinc-900' : ''
+                            }`}
+                          />
+                        )
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
                       <button
                         type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setOpenMenu(isTagMenuOpen ? null : { kind: 'tag', id: tag.id });
-                        }}
-                        title={`Tag options for #${tag.name}`}
-                        aria-label={`Tag options ${tag.name}`}
-                        className={`p-1 rounded hover:bg-zinc-200/80 text-zinc-400 hover:text-zinc-800 transition-opacity ${
-                          isTagMenuOpen
-                            ? 'opacity-100 bg-zinc-200/80 text-zinc-800'
-                            : 'md:opacity-0 md:group-hover:opacity-100'
-                        }`}
+                        onClick={() => setEditingTagId(null)}
+                        className="px-2 py-0.5 rounded text-[10px] text-zinc-500 hover:bg-zinc-100"
                       >
-                        <MoreHorizontal className="w-3.5 h-3.5" strokeWidth={1.75} />
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-2 py-0.5 rounded text-[10px] font-semibold bg-zinc-900 text-white"
+                      >
+                        Save
                       </button>
                     </div>
-
-                    {isTagMenuOpen && (
-                      <div
-                        onClick={(e) => e.stopPropagation()}
-                        className="absolute right-2 top-7 z-50 w-40 rounded-xl bg-zinc-900 text-zinc-100 shadow-2xl border border-zinc-800 py-1.5 text-xs animate-popover"
-                      >
-                        <button
-                          type="button"
-                          aria-label={`Edit tag ${tag.name}`}
-                          onClick={() => {
-                            setEditingTagId(tag.id);
-                            setEditingTagName(tag.name);
-                            setEditingTagColor(tag.color);
-                            setOpenMenu(null);
-                          }}
-                          className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-zinc-800 text-left"
-                        >
-                          <Pencil className="w-3.5 h-3.5 text-zinc-400" strokeWidth={1.75} />
-                          <span>Edit</span>
-                        </button>
-                        <button
-                          type="button"
-                          aria-label={`Delete tag ${tag.name}`}
-                          onClick={() => {
-                            deleteTag(tag.id);
-                            setOpenMenu(null);
-                          }}
-                          className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-rose-500/20 text-rose-400 text-left"
-                        >
-                          <Trash2 className="w-3.5 h-3.5 text-rose-400" strokeWidth={1.75} />
-                          <span>Delete</span>
-                        </button>
-                      </div>
-                    )}
                   </div>
-                );
-              })}
+                </form>
+              )}
+
+              {tags.length === 0 ? (
+                <div className="mx-1 p-3 rounded-lg bg-zinc-200/50 text-[11px] text-zinc-500 leading-relaxed">
+                  Categorize your tasks with tags. Quickly select a tag by typing{' '}
+                  <span className="font-mono font-semibold text-zinc-700">'#'</span> when adding a
+                  task
+                </div>
+              ) : tagLayout === 'horizontal' ? (
+                /* Horizontal Wrap Pills Cloud */
+                <div className="flex flex-wrap gap-1.5 px-0.5 py-1">
+                  {tags.map((tag) => {
+                    const isSelected =
+                      sidebarSelection.kind === 'tag' && sidebarSelection.id === tag.name;
+                    const isTagMenuOpen = openMenu?.kind === 'tag' && openMenu.id === tag.id;
+                    return (
+                      <div key={tag.id} className="relative inline-flex">
+                        <div
+                          onClick={() =>
+                            handleSelectAndCloseOnMobile({ kind: 'tag', id: tag.name })
+                          }
+                          className={`group flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full text-xs cursor-pointer border transition-all ${
+                            isSelected
+                              ? 'bg-zinc-900 text-white border-zinc-900 font-semibold shadow-xs'
+                              : 'bg-white hover:bg-zinc-100 text-zinc-700 border-zinc-200/90 shadow-2xs hover:border-zinc-300'
+                          }`}
+                        >
+                          <span
+                            className="w-2 h-2 rounded-full shrink-0"
+                            style={{ backgroundColor: tag.color }}
+                          />
+                          <span className="truncate max-w-[120px]">#{tag.name}</span>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenMenu(isTagMenuOpen ? null : { kind: 'tag', id: tag.id });
+                            }}
+                            title={`Tag options for #${tag.name}`}
+                            aria-label={`Tag options ${tag.name}`}
+                            className={`p-0.5 rounded-full hover:bg-black/10 transition-colors ${
+                              isSelected
+                                ? 'text-zinc-300 hover:text-white'
+                                : 'text-zinc-400 hover:text-zinc-800'
+                            }`}
+                          >
+                            <MoreHorizontal className="w-3 h-3" strokeWidth={1.75} />
+                          </button>
+                        </div>
+
+                        {isTagMenuOpen && (
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            className="absolute left-0 top-full mt-1.5 z-50 w-36 rounded-xl bg-zinc-900 text-zinc-100 shadow-2xl border border-zinc-800 py-1.5 text-xs animate-popover"
+                          >
+                            <button
+                              type="button"
+                              aria-label={`Edit tag ${tag.name}`}
+                              onClick={() => {
+                                setEditingTagId(tag.id);
+                                setEditingTagName(tag.name);
+                                setEditingTagColor(tag.color);
+                                setOpenMenu(null);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-zinc-800 text-left"
+                            >
+                              <Pencil className="w-3.5 h-3.5 text-zinc-400" strokeWidth={1.75} />
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={`Delete tag ${tag.name}`}
+                              onClick={() => {
+                                deleteTag(tag.id);
+                                setOpenMenu(null);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-rose-500/20 text-rose-400 text-left"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-rose-400" strokeWidth={1.75} />
+                              <span>Delete</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                /* Vertical List Rows */
+                <div className="space-y-0.5">
+                  {tags.map((tag) => {
+                    const isSelected =
+                      sidebarSelection.kind === 'tag' && sidebarSelection.id === tag.name;
+                    const isTagMenuOpen = openMenu?.kind === 'tag' && openMenu.id === tag.id;
+                    return (
+                      <div
+                        key={tag.id}
+                        onClick={() => handleSelectAndCloseOnMobile({ kind: 'tag', id: tag.name })}
+                        className={`relative group flex items-center justify-between px-2.5 py-1.5 md:py-1 rounded-lg text-xs cursor-pointer ${
+                          isSelected
+                            ? 'bg-zinc-900/[0.06] text-zinc-900 font-semibold'
+                            : 'text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-900'
+                        }`}
+                      >
+                        <span className="flex items-center gap-1.5 truncate min-w-0">
+                          <Hash
+                            className="w-3 h-3 shrink-0"
+                            style={{ color: tag.color }}
+                            strokeWidth={1.75}
+                          />
+                          <span className="truncate">{tag.name}</span>
+                        </span>
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenMenu(isTagMenuOpen ? null : { kind: 'tag', id: tag.id });
+                            }}
+                            title={`Tag options for #${tag.name}`}
+                            aria-label={`Tag options ${tag.name}`}
+                            className={`p-1 rounded hover:bg-zinc-200/80 text-zinc-400 hover:text-zinc-800 transition-opacity ${
+                              isTagMenuOpen
+                                ? 'opacity-100 bg-zinc-200/80 text-zinc-800'
+                                : 'md:opacity-0 md:group-hover:opacity-100'
+                            }`}
+                          >
+                            <MoreHorizontal className="w-3.5 h-3.5" strokeWidth={1.75} />
+                          </button>
+                        </div>
+
+                        {isTagMenuOpen && (
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            className="absolute right-2 top-7 z-50 w-40 rounded-xl bg-zinc-900 text-zinc-100 shadow-2xl border border-zinc-800 py-1.5 text-xs animate-popover"
+                          >
+                            <button
+                              type="button"
+                              aria-label={`Edit tag ${tag.name}`}
+                              onClick={() => {
+                                setEditingTagId(tag.id);
+                                setEditingTagName(tag.name);
+                                setEditingTagColor(tag.color);
+                                setOpenMenu(null);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-zinc-800 text-left"
+                            >
+                              <Pencil className="w-3.5 h-3.5 text-zinc-400" strokeWidth={1.75} />
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={`Delete tag ${tag.name}`}
+                              onClick={() => {
+                                deleteTag(tag.id);
+                                setOpenMenu(null);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-rose-500/20 text-rose-400 text-left"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-rose-400" strokeWidth={1.75} />
+                              <span>Delete</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>
