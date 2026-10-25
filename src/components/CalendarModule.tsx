@@ -42,11 +42,32 @@ const BASE_ROW_HEIGHT = 54;
 const SNAP_MINUTES = 15;
 const MIN_DURATION = 15;
 const RANGE_KEY = 'ticktick_calendar_range';
+const DEFAULT_LIST_ID = 'inbox';
+const PROVIDER_COLORS: Record<'google' | 'outlook' | 'apple' | 'ics', string> = {
+  google: '#4285f4',
+  outlook: '#0078d4',
+  apple: '#8e8e93',
+  ics: '#0ea5e9',
+};
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const minutesToTime = (m: number) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
 const clampZoom = (v: number) => Math.min(2.5, Math.max(0.5, Math.round(v * 10) / 10));
 const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+
+// Aceita webcal:// e http(s); devolve uma URL válida ou null
+const normalizeIcsUrl = (raw: string): string | null => {
+  let url = raw.trim();
+  if (!url) return null;
+  if (/^webcal:\/\//i.test(url)) url = `https://${url.slice('webcal://'.length)}`;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null;
+    return parsed.href;
+  } catch {
+    return null;
+  }
+};
 
 interface DayRange {
   startHour: number;
@@ -106,6 +127,7 @@ export const CalendarModule: React.FC = () => {
   const [subName, setSubName] = useState('');
   const [subUrl, setSubUrl] = useState('');
   const [subProvider, setSubProvider] = useState<'google' | 'outlook' | 'apple' | 'ics'>('google');
+  const [subError, setSubError] = useState('');
   const [quickCellDate, setQuickCellDate] = useState<string | null>(null);
   const [quickCellTitle, setQuickCellTitle] = useState('');
   const [expandedDayDate, setExpandedDayDate] = useState<string | null>(null);
@@ -121,6 +143,10 @@ export const CalendarModule: React.FC = () => {
   const resizeRef = useRef<ResizeState | null>(null);
   const createRef = useRef<{ dateStr: string; startMin: number; endMin: number } | null>(null);
   const suppressClickRef = useRef(false);
+  // Função que remove os listeners globais do gesto de mouse em andamento
+  const gestureCleanupRef = useRef<(() => void) | null>(null);
+  // Offset (em minutos) entre o ponto pego no bloco e o início da tarefa
+  const dragGrabMinRef = useRef(0);
   const [createPreview, setCreatePreview] = useState<{ dateStr: string; startMin: number; endMin: number } | null>(null);
   const [createModal, setCreateModal] = useState<{ dateStr: string; startMin: number; endMin: number } | null>(null);
   const [createTitle, setCreateTitle] = useState('');
@@ -174,12 +200,36 @@ export const CalendarModule: React.FC = () => {
     return () => el.removeEventListener('wheel', onWheel);
   }, []);
 
-  // Limpa os listeners se o componente sair da tela durante um ajuste
+  // Remove listeners globais de arraste/redimensionamento se o componente sair da tela no meio de um gesto
   useEffect(() => {
     return () => {
+      gestureCleanupRef.current?.();
+      gestureCleanupRef.current = null;
       resizeRef.current = null;
+      createRef.current = null;
     };
   }, []);
+
+  // Esc cancela o gesto em andamento ou fecha o modal aberto
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (gestureCleanupRef.current) {
+        gestureCleanupRef.current();
+        resizeRef.current = null;
+        createRef.current = null;
+        setResizePreview(null);
+        setCreatePreview(null);
+        return;
+      }
+      if (createModal) setCreateModal(null);
+      else if (quickCellDate) setQuickCellDate(null);
+      else if (showSubModal) setShowSubModal(false);
+      else if (expandedDayDate) setExpandedDayDate(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [createModal, quickCellDate, showSubModal, expandedDayDate]);
 
   const sortDayTasks = (dayTaskList: Task[]): Task[] => {
     return [...dayTaskList].sort((a, b) => {
@@ -254,6 +304,12 @@ export const CalendarModule: React.FC = () => {
   const dragProps = (taskId: string) => ({
     draggable: true,
     onDragStart: (e: React.DragEvent<HTMLElement>) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      // Só blocos da grade têm offset; cartões da gaveta e chips do mês/dia inteiro começam no topo
+      dragGrabMinRef.current =
+        e.currentTarget.dataset.block === 'task'
+          ? Math.floor(((e.clientY - rect.top) / rowHeight) * (60 / SNAP_MINUTES)) * SNAP_MINUTES
+          : 0;
       e.dataTransfer.setData('text/plain', taskId);
       e.dataTransfer.effectAllowed = 'move';
       setDraggingTaskId(taskId);
@@ -325,6 +381,23 @@ export const CalendarModule: React.FC = () => {
     }
   };
 
+  // Registra listeners globais do mouse e guarda como removê-los (usado no Esc e no unmount)
+  const trackMouse = (onMove: (ev: MouseEvent) => void, onUp: () => void) => {
+    gestureCleanupRef.current?.();
+    const cleanup = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', up);
+      gestureCleanupRef.current = null;
+    };
+    const up = () => {
+      cleanup();
+      onUp();
+    };
+    gestureCleanupRef.current = cleanup;
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', up);
+  };
+
   // ---------- Alterar duração (bolinha na borda inferior) ----------
 
   const startResize = (
@@ -361,8 +434,6 @@ export const CalendarModule: React.FC = () => {
     };
 
     const onUp = () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
       const r = resizeRef.current;
       resizeRef.current = null;
       setResizePreview(null);
@@ -378,8 +449,7 @@ export const CalendarModule: React.FC = () => {
       }
     };
 
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    trackMouse(onMove, onUp);
   };
 
   // ---------- Criar tarefa clicando e arrastando na grade ----------
@@ -445,8 +515,6 @@ export const CalendarModule: React.FC = () => {
       }
     };
     const onUp = () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
       const cur = createRef.current;
       createRef.current = null;
       setCreatePreview(null);
@@ -459,8 +527,7 @@ export const CalendarModule: React.FC = () => {
         setCreateTitle('');
       }
     };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    trackMouse(onMove, onUp);
   };
 
   const handleColumnDrop = (e: React.DragEvent<HTMLDivElement>, dateStr: string) => {
@@ -470,7 +537,11 @@ export const CalendarModule: React.FC = () => {
     setDraggingTaskId(null);
     if (!taskId) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    const m = minuteAtY(e.clientY - rect.top, 'floor');
+    const raw = minuteAtY(e.clientY - rect.top, 'floor') - dragGrabMinRef.current;
+    const m = Math.min(
+      Math.max(Math.round(raw / SNAP_MINUTES) * SNAP_MINUTES, dayRange.startHour * 60),
+      dayRange.endHour * 60 - SNAP_MINUTES
+    );
     scheduleTaskAt(taskId, dateStr, minutesToTime(m));
   };
 
@@ -485,7 +556,7 @@ export const CalendarModule: React.FC = () => {
       endTime: minutesToTime(createModal.endMin),
       durationMinutes: createModal.endMin - createModal.startMin,
       isAllDay: false,
-      listId: 'inbox',
+      listId: DEFAULT_LIST_ID,
     });
     setCreateModal(null);
     setCreateTitle('');
@@ -500,7 +571,7 @@ export const CalendarModule: React.FC = () => {
       title: quickCellTitle.trim(),
       dueDate: quickCellDate,
       startDate: quickCellDate,
-      listId: 'inbox',
+      listId: DEFAULT_LIST_ID,
     });
     setQuickCellTitle('');
     setQuickCellDate(null);
@@ -513,7 +584,7 @@ export const CalendarModule: React.FC = () => {
       title: expandedDayNewTitle.trim(),
       dueDate: expandedDayDate,
       startDate: expandedDayDate,
-      listId: 'inbox',
+      listId: DEFAULT_LIST_ID,
     });
     setExpandedDayNewTitle('');
   };
@@ -566,7 +637,7 @@ export const CalendarModule: React.FC = () => {
               <button
                 type="button"
                 onClick={() => handleNavigate(-1)}
-                aria-label="Previous period"
+                aria-label="Período anterior"
                 className="p-1 rounded-md hover:bg-white text-zinc-600 transition-colors"
               >
                 <ChevronLeft className="w-3.5 h-3.5" strokeWidth={1.75} />
@@ -574,7 +645,7 @@ export const CalendarModule: React.FC = () => {
               <button
                 type="button"
                 onClick={() => handleNavigate(1)}
-                aria-label="Next period"
+                aria-label="Próximo período"
                 className="p-1 rounded-md hover:bg-white text-zinc-600 transition-colors"
               >
                 <ChevronRight className="w-3.5 h-3.5" strokeWidth={1.75} />
@@ -586,10 +657,10 @@ export const CalendarModule: React.FC = () => {
             <div className="inline-flex bg-zinc-100 p-0.5 rounded-lg border border-zinc-200/70 shrink-0">
               {(
                 [
-                  ['month', 'Month'],
-                  ['week', 'Week'],
-                  ['multiday', '3-Day'],
-                  ['day', 'Day'],
+                  ['month', 'Mês'],
+                  ['week', 'Semana'],
+                  ['multiday', '3 dias'],
+                  ['day', 'Dia'],
                   ['agenda', 'Agenda'],
                 ] as const
               ).map(([id, label]) => (
@@ -610,11 +681,11 @@ export const CalendarModule: React.FC = () => {
             <div className="flex items-center gap-1.5 shrink-0">
               <button
                 onClick={() => setShowSubModal(true)}
-                title="Sync External Calendars"
+                title="Sincronizar calendários externos"
                 className="inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-medium border border-zinc-200/80 hover:bg-zinc-50 text-zinc-700 font-mono-num"
               >
                 <Globe className="w-3.5 h-3.5 text-zinc-600" strokeWidth={1.75} />
-                <span className="hidden lg:inline">Sync ({calendarSubscriptions.length})</span>
+                <span className="hidden lg:inline">Sincronizar ({calendarSubscriptions.length})</span>
               </button>
 
               <button
@@ -625,7 +696,7 @@ export const CalendarModule: React.FC = () => {
                     : 'border-zinc-200/80 text-zinc-600 hover:bg-zinc-50'
                 }`}
               >
-                Arrange ({unscheduledTasks.length})
+                Organizar ({unscheduledTasks.length})
               </button>
             </div>
           </div>
@@ -755,6 +826,16 @@ export const CalendarModule: React.FC = () => {
                       <div
                         key={dateStr}
                         onClick={() => setQuickCellDate(dateStr)}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Criar tarefa em ${format(day, 'dd/MM/yyyy')}`}
+                        onKeyDown={(e) => {
+                          if (e.target !== e.currentTarget) return;
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setQuickCellDate(dateStr);
+                          }
+                        }}
                         onDragOver={(e) => {
                           e.preventDefault();
                           e.dataTransfer.dropEffect = 'move';
@@ -789,7 +870,7 @@ export const CalendarModule: React.FC = () => {
                                   e.stopPropagation();
                                   setExpandedDayDate(dateStr);
                                 }}
-                                title={`View all ${combinedItems.length} items on ${format(day, 'MMM d')}`}
+                                title={`Ver os ${combinedItems.length} itens de ${format(day, 'dd/MM')}`}
                                 className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono-num text-zinc-400 hover:text-zinc-800 hover:bg-zinc-100 transition-colors"
                               >
                                 {combinedItems.length}
@@ -893,7 +974,7 @@ export const CalendarModule: React.FC = () => {
                               }}
                               className="h-[20px] px-1.5 rounded-[4px] bg-zinc-100/60 hover:bg-zinc-200/80 text-[10px] font-mono-num font-semibold text-zinc-500 hover:text-zinc-900 flex items-center justify-between transition-colors mt-auto"
                             >
-                              <span>+{hiddenItems.length} more</span>
+                              <span>+{hiddenItems.length} mais</span>
                               <span className="flex items-center gap-0.5">
                                 {hiddenItems.slice(0, 4).map((hi, idx) => {
                                   const c =
@@ -943,7 +1024,7 @@ export const CalendarModule: React.FC = () => {
                         className="grid border-b border-zinc-200/80 bg-zinc-50/95 backdrop-blur-xs sticky top-0 z-10"
                       >
                         <div className="p-2 text-[10px] font-semibold text-zinc-400 border-r border-zinc-200/80 flex items-end justify-center">
-                          All-Day
+                          Dia inteiro
                         </div>
                         {cols.map((d) => {
                           const dStr = format(d, 'yyyy-MM-dd');
@@ -983,7 +1064,7 @@ export const CalendarModule: React.FC = () => {
                                   <button
                                     type="button"
                                     onClick={() => setExpandedDayDate(dStr)}
-                                    title={`View all ${dayAllTasks.length} tasks on ${format(d, 'MMM d')}`}
+                                    title={`Ver as ${dayAllTasks.length} tarefas de ${format(d, 'dd/MM')}`}
                                     className="text-[10px] font-mono-num text-zinc-400 hover:text-zinc-800 px-1 py-0.5 rounded hover:bg-zinc-200/60 transition-colors"
                                   >
                                     {dayAllTasks.length}d
@@ -1028,7 +1109,7 @@ export const CalendarModule: React.FC = () => {
                                       onClick={() => setExpandedDayDate(dStr)}
                                       className="w-full h-[19px] px-1.5 rounded-[4px] bg-zinc-200/60 hover:bg-zinc-200 text-[10px] font-mono-num font-semibold text-zinc-600 hover:text-zinc-900 text-left transition-colors"
                                     >
-                                      +{hiddenAllDayCount} more all-day
+                                      +{hiddenAllDayCount} dia inteiro
                                     </button>
                                   )}
                                 </div>
@@ -1205,12 +1286,12 @@ export const CalendarModule: React.FC = () => {
                           {format(day, 'EEEE, MMMM d')}
                         </span>
                         <span className="text-[11px] font-mono-num text-zinc-400">
-                          {dayTasks.length + dayEvents.length} items
+                          {dayTasks.length + dayEvents.length} itens
                         </span>
                       </div>
 
                       {dayTasks.length === 0 && dayEvents.length === 0 ? (
-                        <p className="text-xs text-zinc-400">No scheduled items</p>
+                        <p className="text-xs text-zinc-400">Nada agendado</p>
                       ) : (
                         <div className="space-y-1.5">
                           {dayEvents.map((ev) => (
@@ -1249,7 +1330,7 @@ export const CalendarModule: React.FC = () => {
                                 </div>
                                 <span className="font-mono-num text-[11px] text-zinc-500 flex items-center gap-1">
                                   <Clock className="w-3 h-3" strokeWidth={1.75} />
-                                  {t.startTime || 'All-Day'}
+                                  {t.startTime || 'Dia inteiro'}
                                 </span>
                               </div>
                             ))}
@@ -1259,7 +1340,7 @@ export const CalendarModule: React.FC = () => {
                               <div className="flex items-center gap-1 text-[11px] font-semibold text-zinc-400 px-1">
                                 <ChevronDown className="w-3 h-3" />
                                 <span>
-                                  Completed {dayTasks.filter((t) => t.status === 'completed').length}
+                                  Concluídas {dayTasks.filter((t) => t.status === 'completed').length}
                                 </span>
                               </div>
                               {dayTasks
@@ -1287,7 +1368,7 @@ export const CalendarModule: React.FC = () => {
                                     </div>
                                     <span className="font-mono-num text-[11px] text-zinc-400 flex items-center gap-1">
                                       <Clock className="w-3 h-3" strokeWidth={1.75} />
-                                      {t.startTime || 'All-Day'}
+                                      {t.startTime || 'Dia inteiro'}
                                     </span>
                                   </div>
                                 ))}
@@ -1302,7 +1383,7 @@ export const CalendarModule: React.FC = () => {
             )}
           </div>
 
-          {/* Gaveta "Arrange Tasks" */}
+          {/* Gaveta "Organizar tarefas" */}
           {showUnscheduledDrawer && (
             <>
               <div
@@ -1314,11 +1395,11 @@ export const CalendarModule: React.FC = () => {
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-semibold text-zinc-800 flex items-center gap-1.5">
                     <Sparkles className="w-3.5 h-3.5 text-zinc-600" strokeWidth={1.75} />
-                    Arrange Tasks
+                    Organizar tarefas
                   </span>
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-mono-num text-zinc-400">
-                      {unscheduledTasks.length} undated
+                      {unscheduledTasks.length} sem data
                     </span>
                     <button
                       onClick={() => setShowUnscheduledDrawer(false)}
@@ -1349,12 +1430,12 @@ export const CalendarModule: React.FC = () => {
                               startTime: '10:00',
                               durationMinutes: 60,
                             },
-                            `Time-blocked onto ${format(cursorDate, 'MMM d')} at 10:00`
+                            `Agendada para ${format(cursorDate, 'dd/MM')} às 10:00`
                           )
                         }
                         className="w-full py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-[11px] font-semibold font-mono-num"
                       >
-                        + Schedule on {format(cursorDate, 'MMM d')}
+                        + Agendar em {format(cursorDate, 'dd/MM')}
                       </button>
                     </div>
                   ))}
@@ -1376,7 +1457,7 @@ export const CalendarModule: React.FC = () => {
         >
           <div
             role="dialog"
-            aria-label="Day Schedule Overview"
+            aria-label="Visão geral do dia"
             onClick={(e) => e.stopPropagation()}
             className="bg-white border border-zinc-200/90 rounded-xl shadow-xl w-full max-w-md overflow-hidden flex flex-col max-h-[80dvh] animate-modal"
           >
@@ -1396,14 +1477,14 @@ export const CalendarModule: React.FC = () => {
                         {format(dayObj, 'EEEE, MMMM d, yyyy')}
                       </h3>
                       <p className="text-[11px] font-mono-num text-zinc-500 mt-0.5">
-                        {dayTasks.length} {dayTasks.length === 1 ? 'task' : 'tasks'}
-                        {dayEvents.length > 0 ? ` · ${dayEvents.length} events` : ''}
-                        {completedCount > 0 ? ` · ${completedCount} completed` : ''}
+                        {dayTasks.length} {dayTasks.length === 1 ? 'tarefa' : 'tarefas'}
+                        {dayEvents.length > 0 ? ` · ${dayEvents.length} eventos` : ''}
+                        {completedCount > 0 ? ` · ${completedCount} concluídas` : ''}
                       </p>
                     </div>
                     <button
                       type="button"
-                      aria-label="Close day overview"
+                      aria-label="Fechar visão do dia"
                       onClick={() => setExpandedDayDate(null)}
                       className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-800 hover:bg-zinc-200/60 transition-colors"
                     >
@@ -1430,7 +1511,7 @@ export const CalendarModule: React.FC = () => {
 
                     {dayTasks.length === 0 && dayEvents.length === 0 ? (
                       <div className="py-8 text-center text-xs text-zinc-400">
-                        No tasks scheduled for this date.
+                        Nenhuma tarefa agendada para esta data.
                       </div>
                     ) : (
                       dayTasks.map((t) => {
@@ -1475,7 +1556,7 @@ export const CalendarModule: React.FC = () => {
                             </div>
 
                             <span className="font-mono-num text-[11px] text-zinc-500 bg-zinc-100 px-1.5 py-0.5 rounded shrink-0">
-                              {t.startTime || 'All-Day'}
+                              {t.startTime || 'Dia inteiro'}
                             </span>
                           </div>
                         );
@@ -1491,14 +1572,14 @@ export const CalendarModule: React.FC = () => {
                       type="text"
                       value={expandedDayNewTitle}
                       onChange={(e) => setExpandedDayNewTitle(e.target.value)}
-                      placeholder={`+ Add task on ${format(dayObj, 'MMM d')}...`}
+                      placeholder={`+ Nova tarefa em ${format(dayObj, 'dd/MM')}...`}
                       className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-zinc-200 bg-white focus:outline-none focus:border-zinc-900"
                     />
                     <button
                       type="submit"
                       className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-semibold shrink-0"
                     >
-                      Add
+                      Adicionar
                     </button>
                   </form>
                 </>
@@ -1563,7 +1644,7 @@ export const CalendarModule: React.FC = () => {
             className="surface-floating rounded-xl w-full max-w-sm p-5 space-y-3 animate-modal"
           >
             <h3 className="text-sm font-semibold text-zinc-900">
-              Schedule Task on {format(parseISO(quickCellDate), 'EEEE, MMM d')}
+              Agendar tarefa em {format(parseISO(quickCellDate), 'dd/MM/yyyy')}
             </h3>
             <input
               type="text"
@@ -1571,7 +1652,7 @@ export const CalendarModule: React.FC = () => {
               required
               value={quickCellTitle}
               onChange={(e) => setQuickCellTitle(e.target.value)}
-              placeholder="Task title..."
+              placeholder="Título da tarefa..."
               className="w-full px-3 py-2 text-xs rounded-lg border border-zinc-300 focus:outline-none focus:border-zinc-900"
             />
             <div className="flex justify-end gap-2">
@@ -1580,13 +1661,13 @@ export const CalendarModule: React.FC = () => {
                 onClick={() => setQuickCellDate(null)}
                 className="px-3 py-1.5 rounded-lg text-xs text-zinc-600 hover:bg-zinc-100"
               >
-                Cancel
+                Cancelar
               </button>
               <button
                 type="submit"
                 className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-zinc-900 text-white hover:bg-zinc-800"
               >
-                Add to Calendar
+                Adicionar ao calendário
               </button>
             </div>
           </form>
@@ -1606,7 +1687,7 @@ export const CalendarModule: React.FC = () => {
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-zinc-900 flex items-center gap-2">
                 <Globe className="w-4 h-4 text-zinc-700" strokeWidth={1.75} />
-                External Calendar Subscriptions
+                Agendas externas
               </h3>
               <button
                 onClick={() => setShowSubModal(false)}
@@ -1637,7 +1718,7 @@ export const CalendarModule: React.FC = () => {
                         : 'bg-zinc-200 text-zinc-600'
                     }`}
                   >
-                    {sub.enabled ? 'Synced' : 'Paused'}
+                    {sub.enabled ? 'Sincronizada' : 'Pausada'}
                   </button>
                 </div>
               ))}
@@ -1647,21 +1728,28 @@ export const CalendarModule: React.FC = () => {
               onSubmit={(e) => {
                 e.preventDefault();
                 if (subName.trim() && subUrl.trim()) {
-                  addCalendarSubscription(subName.trim(), subUrl.trim(), subProvider, '#0ea5e9');
+                  const normalizedUrl = normalizeIcsUrl(subUrl);
+                  if (!normalizedUrl) {
+                    setSubError('Use uma URL https://, http:// ou webcal://.');
+                    return;
+                  }
+                  setSubError('');
+                  addCalendarSubscription(subName.trim(), normalizedUrl, subProvider, PROVIDER_COLORS[subProvider]);
                   setSubName('');
                   setSubUrl('');
                 }
               }}
               className="space-y-2.5 pt-2 border-t border-zinc-200/80"
             >
-              <div className="text-xs font-semibold text-zinc-700">Subscribe via ICS / Webcal URL</div>
+              <div className="text-xs font-semibold text-zinc-700">Conectar por URL ICS / webcal</div>
+              {subError && <p className="text-[11px] text-red-600">{subError}</p>}
               <div className="grid grid-cols-2 gap-2">
                 <input
                   type="text"
                   required
                   value={subName}
                   onChange={(e) => setSubName(e.target.value)}
-                  placeholder="Calendar Name (e.g. Outlook)"
+                  placeholder="Nome da agenda (ex.: Outlook)"
                   className="px-2.5 py-1.5 text-xs rounded-lg border border-zinc-300"
                 />
                 <select
@@ -1672,7 +1760,7 @@ export const CalendarModule: React.FC = () => {
                   <option value="google">Google Calendar</option>
                   <option value="outlook">Outlook Calendar</option>
                   <option value="apple">Apple iCloud</option>
-                  <option value="ics">Custom ICS Feed</option>
+                  <option value="ics">Feed ICS personalizado</option>
                 </select>
               </div>
               <input
@@ -1680,14 +1768,14 @@ export const CalendarModule: React.FC = () => {
                 required
                 value={subUrl}
                 onChange={(e) => setSubUrl(e.target.value)}
-                placeholder="webcal:// or https://.../basic.ics"
+                placeholder="webcal://… ou https://…/agenda.ics"
                 className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-zinc-300 font-mono"
               />
               <button
                 type="submit"
                 className="w-full py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-semibold flex items-center justify-center gap-1.5"
               >
-                <Check className="w-3.5 h-3.5" strokeWidth={2} /> Connect Calendar Feed
+                <Check className="w-3.5 h-3.5" strokeWidth={2} /> Conectar agenda
               </button>
             </form>
           </div>
