@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   addDays,
   addMonths,
@@ -67,6 +67,13 @@ export const CalendarModule: React.FC = () => {
   const [expandedDayNewTitle, setExpandedDayNewTitle] = useState('');
   const [selectedCellDate, setSelectedCellDate] = useState<string | null>(null);
 
+  // NOVO: hora atual, atualizada a cada minuto
+  const [now, setNow] = useState<Date>(() => new Date());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
   // ---- Arrastar para criar tarefa ----
   const SLOT = 15; // cada faixa do grid vale 15 minutos
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -127,6 +134,12 @@ export const CalendarModule: React.FC = () => {
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
   };
+
+  // NOVO: posição vertical da linha da hora atual, em minutos desde 07:00
+  const HOUR_ROW_PX = 64; // altura mínima de cada hora no grid (min-h-[64px])
+  const GRID_START_HOUR = 7;
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const nowTopPct = ((nowMinutes - GRID_START_HOUR * 60) / 60) * 100; // em % de uma hora
 
   const today = startOfToday();
   const todayStr = format(today, 'yyyy-MM-dd');
@@ -768,6 +781,20 @@ export const CalendarModule: React.FC = () => {
                                         />
                                       );
                                     })()}
+
+                                  {/* NOVO: linha da hora atual, só na coluna de hoje e só na hora certa */}
+                                  {dStr === todayStr &&
+                                    nowMinutes >= hr * 60 &&
+                                    nowMinutes < hr * 60 + 60 && (
+                                      <div
+                                        className="absolute left-0 right-0 z-20 pointer-events-none"
+                                        style={{ top: `${((nowMinutes - hr * 60) / 60) * 100}%` }}
+                                      >
+                                        <div className="relative h-px bg-rose-500">
+                                          <span className="absolute -left-1 -top-[3px] w-[7px] h-[7px] rounded-full bg-rose-500" />
+                                        </div>
+                                      </div>
+                                    )}
 
                                   {/* Conteúdo: deixa o clique passar, exceto nas tarefas e eventos */}
                                   <div className="relative z-10 p-1 space-y-1 pointer-events-none">
