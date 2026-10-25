@@ -53,6 +53,7 @@ interface QuadrantConfig {
   badgeBg: string;
   titleColor: string;
   borderColor: string;
+  accentColor: string;
   defaultPriority: Priority;
   defaultDue?: string;
 }
@@ -65,8 +66,9 @@ const DEFAULT_QUADRANTS: QuadrantConfig[] = [
     title: 'Urgent & Important',
     subtitle: 'Do First: Crisis, pressing deadlines, and urgent bugs',
     badgeBg: 'bg-rose-500 text-white',
-    titleColor: 'text-rose-500',
-    borderColor: 'border-rose-500/20',
+    titleColor: 'text-rose-600',
+    borderColor: 'border-rose-200',
+    accentColor: '#f43f5e',
     defaultPriority: 5,
   },
   {
@@ -76,8 +78,9 @@ const DEFAULT_QUADRANTS: QuadrantConfig[] = [
     title: 'Not Urgent & Important',
     subtitle: 'Schedule: Deep work, strategic planning, and personal growth',
     badgeBg: 'bg-amber-500 text-white',
-    titleColor: 'text-amber-500',
-    borderColor: 'border-amber-500/20',
+    titleColor: 'text-amber-600',
+    borderColor: 'border-amber-200',
+    accentColor: '#f59e0b',
     defaultPriority: 3,
   },
   {
@@ -87,8 +90,9 @@ const DEFAULT_QUADRANTS: QuadrantConfig[] = [
     title: 'Urgent & Unimportant',
     subtitle: 'Delegate: Interruptions, urgent favors, and routine chores',
     badgeBg: 'bg-blue-500 text-white',
-    titleColor: 'text-blue-500',
-    borderColor: 'border-blue-500/20',
+    titleColor: 'text-blue-600',
+    borderColor: 'border-blue-200',
+    accentColor: '#3b82f6',
     defaultPriority: 1,
   },
   {
@@ -98,8 +102,9 @@ const DEFAULT_QUADRANTS: QuadrantConfig[] = [
     title: 'Not Urgent & Unimportant',
     subtitle: "Don't Do: Distractions, busywork, and time wasters",
     badgeBg: 'bg-emerald-500 text-white',
-    titleColor: 'text-emerald-500',
-    borderColor: 'border-emerald-500/20',
+    titleColor: 'text-emerald-600',
+    borderColor: 'border-emerald-200',
+    accentColor: '#10b981',
     defaultPriority: 0,
   },
 ];
@@ -172,7 +177,7 @@ export const EisenhowerMatrixModule: React.FC = () => {
   // Collapsed status for individual groups
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
-  // Mobile segmented tab
+  // Mobile segmented focus filter
   const [mobileQuadrantFilter, setMobileQuadrantFilter] = useState<
     'all' | 'q1' | 'q2' | 'q3' | 'q4'
   >('all');
@@ -186,7 +191,10 @@ export const EisenhowerMatrixModule: React.FC = () => {
     'q1' | 'q2' | 'q3' | 'q4' | null
   >(null);
 
-  // In-Quadrant Floating Quick-Add Card State (Screenshots 1 & 2)
+  // Mobile Action Sheet for Moving a Task to another Quadrant
+  const [movingTask, setMovingTask] = useState<Task | null>(null);
+
+  // In-Quadrant Quick-Add Card State (Screenshots 1 & 2)
   const [activeQuickAddQId, setActiveQuickAddQId] = useState<
     'q1' | 'q2' | 'q3' | 'q4' | null
   >(null);
@@ -204,7 +212,7 @@ export const EisenhowerMatrixModule: React.FC = () => {
   const [showQuickAddTagPicker, setShowQuickAddTagPicker] = useState(false);
   const [showQuickAddTemplatePicker, setShowQuickAddTemplatePicker] = useState(false);
 
-  // Fast inline quick-add inputs (for instant typing)
+  // Fast inline quick-add inputs
   const [inlineQuickInputs, setInlineQuickInputs] = useState<
     Record<'q1' | 'q2' | 'q3' | 'q4', string>
   >({
@@ -253,7 +261,7 @@ export const EisenhowerMatrixModule: React.FC = () => {
     }
   }, [quadrantConfigs]);
 
-  // Click outside listener for top menu & quadrant menus
+  // Click outside listener for desktop popovers
   useEffect(() => {
     const handleWindowClick = () => {
       setShowTopMoreMenu(false);
@@ -284,7 +292,7 @@ export const EisenhowerMatrixModule: React.FC = () => {
 
   const selectedTask = tasks.find((t) => t.id === matrixPopoverTaskId) || null;
 
-  // Open the Floating Quick-Add Card for a quadrant
+  // Open Quick-Add Card for a quadrant
   const handleOpenQuickAddCard = (qId: 'q1' | 'q2' | 'q3' | 'q4') => {
     const qCfg = quadrantConfigs.find((q) => q.id === qId);
     setActiveQuickAddQId(qId);
@@ -299,7 +307,7 @@ export const EisenhowerMatrixModule: React.FC = () => {
     setShowQuickAddMoreMenu(false);
   };
 
-  // Submit the Floating Quick-Add Card
+  // Submit Quick-Add
   const handleSubmitQuickAddCard = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!activeQuickAddQId || !quickAddTitle.trim()) return;
@@ -335,7 +343,6 @@ export const EisenhowerMatrixModule: React.FC = () => {
   ) => {
     const setting = quadrantSettings[qId] || { groupBy: 'time', sortBy: 'time', order: 'asc' };
 
-    // Filter completed if hideCompleted is enabled
     const visibleTasks = hideCompleted
       ? quadrantTasks.filter((t) => t.status !== 'completed')
       : quadrantTasks;
@@ -411,27 +418,21 @@ export const EisenhowerMatrixModule: React.FC = () => {
       return groups.filter((g) => g.tasks.length > 0);
     }
 
-    // Default fallback
     return [{ groupKey: 'all', title: '', tasks: visibleTasks }];
   };
 
-  // Helper to extract or choose an emoji/icon prefix for a task
   const renderTaskPrefixIcon = (task: Task) => {
-    // Check if task title starts with an emoji
     const emojiMatch = task.title.match(/^(\p{Extended_Pictographic})/u);
     if (emojiMatch) {
       return <span className="text-sm select-none">{emojiMatch[0]}</span>;
     }
-
     if (task.isNote) {
       return <FileText className="w-3.5 h-3.5 text-amber-500 shrink-0" />;
     }
-
     return null;
   };
 
   const cleanTaskTitle = (title: string) => {
-    // Strip leading emoji if we already rendered it
     return title.replace(/^(\p{Extended_Pictographic})\s*/u, '');
   };
 
@@ -450,14 +451,14 @@ export const EisenhowerMatrixModule: React.FC = () => {
           setMatrixPopoverTaskId(task.id);
           setShowPopoverMoreMenu(false);
         }}
-        className={`group flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-all ${
+        className={`group flex items-center justify-between gap-2.5 px-3 py-2 sm:py-1.5 rounded-xl text-xs cursor-pointer transition-all ${
           isSelected
             ? 'bg-blue-50/90 text-zinc-900 shadow-2xs'
             : 'hover:bg-zinc-100/90 text-zinc-800'
         }`}
       >
-        <div className="flex items-center gap-2 min-w-0">
-          {/* Square Checkbox (matching TickTick screenshot) */}
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          {/* Square Checkbox (Touch friendly 44px hit-box on mobile) */}
           <button
             type="button"
             aria-label={`Mark "${task.title}" as ${isDone ? 'incomplete' : 'completed'}`}
@@ -485,7 +486,7 @@ export const EisenhowerMatrixModule: React.FC = () => {
 
           {/* Task Title */}
           <span
-            className={`truncate font-medium ${
+            className={`truncate font-medium text-xs sm:text-[12px] leading-tight ${
               isDone ? 'text-zinc-400 line-through' : 'text-zinc-800'
             }`}
           >
@@ -493,11 +494,11 @@ export const EisenhowerMatrixModule: React.FC = () => {
           </span>
         </div>
 
-        {/* Right side items: Subtasks badge, Due date, List Badge, Quadrant switcher */}
+        {/* Right side items */}
         <div className="flex items-center gap-1.5 shrink-0">
           {/* Subtask count */}
           {task.subtasks && task.subtasks.length > 0 && (
-            <span className="text-[10px] text-zinc-400 font-mono-num">
+            <span className="text-[10px] text-zinc-400 font-mono-num hidden xs:inline">
               {task.subtasks.filter((s) => s.completed).length}/{task.subtasks.length}
             </span>
           )}
@@ -515,8 +516,8 @@ export const EisenhowerMatrixModule: React.FC = () => {
             </span>
           )}
 
-          {/* List badge (e.g. 🟠 Welcome ⊟) */}
-          <span className="inline-flex items-center gap-1 text-[11px] text-zinc-400 max-w-[90px] truncate">
+          {/* List badge */}
+          <span className="inline-flex items-center gap-1 text-[11px] text-zinc-400 max-w-[70px] sm:max-w-[90px] truncate">
             {taskList ? (
               <>
                 <span
@@ -533,7 +534,20 @@ export const EisenhowerMatrixModule: React.FC = () => {
             )}
           </span>
 
-          {/* Quadrant Quick Mover Dropdown on Hover */}
+          {/* Mobile Quick-Move Pill (opens Mobile Move Sheet on tap) */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setMovingTask(task);
+            }}
+            className="md:hidden px-1.5 py-0.5 rounded text-[10px] font-mono-num bg-zinc-100 text-zinc-600 border border-zinc-200 active:bg-zinc-200"
+            title="Move to another quadrant"
+          >
+            {qId.toUpperCase()}
+          </button>
+
+          {/* Desktop Hover Quick Mover Dropdown */}
           <select
             aria-label="Move to quadrant"
             value={qId}
@@ -543,7 +557,7 @@ export const EisenhowerMatrixModule: React.FC = () => {
                 eisenhowerQuadrant: e.target.value as 'q1' | 'q2' | 'q3' | 'q4',
               })
             }
-            className="opacity-0 group-hover:opacity-100 text-[10px] font-mono-num bg-zinc-100 hover:bg-zinc-200 px-1 py-0.5 rounded border border-zinc-200 text-zinc-600 cursor-pointer transition-opacity"
+            className="hidden md:inline-block opacity-0 group-hover:opacity-100 text-[10px] font-mono-num bg-zinc-100 hover:bg-zinc-200 px-1 py-0.5 rounded border border-zinc-200 text-zinc-600 cursor-pointer transition-opacity"
           >
             <option value="q1">Q1</option>
             <option value="q2">Q2</option>
@@ -557,10 +571,10 @@ export const EisenhowerMatrixModule: React.FC = () => {
 
   return (
     <div className="relative flex-1 flex h-full min-w-0 bg-zinc-50/70 overflow-hidden text-zinc-900">
-      <div className="flex-1 flex flex-col h-full min-w-0 p-3.5 sm:p-5 overflow-y-auto">
+      <div className="flex-1 flex flex-col h-full min-w-0 p-3 sm:p-5 overflow-y-auto pb-24 md:pb-5">
         {/* Main Header */}
-        <div className="flex items-center justify-between mb-3.5 shrink-0">
-          <div className="flex items-center gap-2.5">
+        <div className="flex items-center justify-between mb-3 shrink-0">
+          <div className="flex items-center gap-2">
             <h1 className="text-base sm:text-lg font-bold text-zinc-900 flex items-center gap-2 tracking-tight">
               <Grid2X2 className="w-4 h-4 text-zinc-800" strokeWidth={2} />
               Eisenhower Matrix
@@ -570,7 +584,7 @@ export const EisenhowerMatrixModule: React.FC = () => {
             </span>
           </div>
 
-          {/* Top-Right Page More Menu (...) (Screenshot 3) */}
+          {/* Top-Right Page More Menu (...) */}
           <div className="relative">
             <button
               type="button"
@@ -585,92 +599,121 @@ export const EisenhowerMatrixModule: React.FC = () => {
               <MoreHorizontal className="w-4 h-4" strokeWidth={2} />
             </button>
 
+            {/* Responsive Top More Menu: Overlay Bottom Sheet on Mobile, Dropdown on Desktop */}
             {showTopMoreMenu && (
-              <div
-                onClick={(e) => e.stopPropagation()}
-                className="absolute right-0 top-8 z-30 w-48 rounded-xl bg-white shadow-xl border border-zinc-200 py-1.5 text-xs text-zinc-700 animate-in fade-in zoom-in-95 duration-150"
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsManageViewOpen(true);
-                    setShowTopMoreMenu(false);
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-zinc-100 text-left"
+              <>
+                <div
+                  className="fixed inset-0 z-30 bg-black/40 md:hidden"
+                  onClick={() => setShowTopMoreMenu(false)}
+                />
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className="fixed inset-x-0 bottom-0 md:inset-auto md:right-0 md:top-8 z-40 md:w-48 rounded-t-3xl md:rounded-xl bg-white shadow-2xl md:shadow-xl border-t md:border border-zinc-200 p-4 md:py-1.5 md:px-0 text-xs text-zinc-700 animate-in fade-in slide-in-from-bottom md:slide-in-from-top-2 duration-150"
                 >
-                  <Layers className="w-3.5 h-3.5 text-zinc-500" />
-                  <span>Manage View</span>
-                </button>
+                  <div className="w-10 h-1 bg-zinc-300 rounded-full mx-auto mb-3 md:hidden" />
+                  <div className="md:hidden text-xs font-bold text-zinc-900 mb-2 px-1">
+                    Eisenhower Matrix Options
+                  </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setHideCompleted((prev) => !prev);
-                    setShowTopMoreMenu(false);
-                  }}
-                  className="w-full flex items-center justify-between px-3 py-2 hover:bg-zinc-100 text-left"
-                >
-                  <span className="flex items-center gap-2.5">
-                    <CheckSquare className="w-3.5 h-3.5 text-zinc-500" />
-                    <span>Hide Completed</span>
-                  </span>
-                  {hideCompleted && <Check className="w-3.5 h-3.5 text-blue-600" />}
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsManageViewOpen(true);
+                      setShowTopMoreMenu(false);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 md:py-2 hover:bg-zinc-100 rounded-lg md:rounded-none text-left"
+                  >
+                    <Layers className="w-4 md:w-3.5 h-4 md:h-3.5 text-zinc-500" />
+                    <span>Manage View</span>
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsUserGuideOpen(true);
-                    setShowTopMoreMenu(false);
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-zinc-100 text-left border-t border-zinc-100"
-                >
-                  <HelpCircle className="w-3.5 h-3.5 text-zinc-500" />
-                  <span>User Guide</span>
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHideCompleted((prev) => !prev);
+                      setShowTopMoreMenu(false);
+                    }}
+                    className="w-full flex items-center justify-between px-3 py-2.5 md:py-2 hover:bg-zinc-100 rounded-lg md:rounded-none text-left"
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <CheckSquare className="w-4 md:w-3.5 h-4 md:h-3.5 text-zinc-500" />
+                      <span>Hide Completed</span>
+                    </span>
+                    {hideCompleted && <Check className="w-4 md:w-3.5 h-4 md:h-3.5 text-blue-600" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsUserGuideOpen(true);
+                      setShowTopMoreMenu(false);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 md:py-2 hover:bg-zinc-100 rounded-lg md:rounded-none text-left border-t border-zinc-100"
+                  >
+                    <HelpCircle className="w-4 md:w-3.5 h-4 md:h-3.5 text-zinc-500" />
+                    <span>User Guide</span>
+                  </button>
+                </div>
+              </>
             )}
           </div>
         </div>
 
-        {/* Mobile Segmented Quadrant Tabs (<768px) */}
-        <div className="md:hidden flex items-center gap-1.5 overflow-x-auto pb-2 mb-2 no-scrollbar shrink-0">
-          <button
-            type="button"
-            onClick={() => setMobileQuadrantFilter('all')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
-              mobileQuadrantFilter === 'all'
-                ? 'bg-zinc-900 text-white font-semibold'
-                : 'bg-white border border-zinc-200 text-zinc-600 hover:bg-zinc-100'
-            }`}
-          >
-            All Quadrants ({matrixTasks.filter((t) => t.status !== 'completed').length})
-          </button>
-          {quadrantConfigs.map((q) => {
-            const count = matrixTasks.filter(
-              (t) => resolveTaskQuadrant(t) === q.id && t.status !== 'completed'
-            ).length;
-            const isSelected = mobileQuadrantFilter === q.id;
-            return (
-              <button
-                key={q.id}
-                type="button"
-                onClick={() => setMobileQuadrantFilter(q.id)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
-                  isSelected
-                    ? 'bg-zinc-900 text-white font-semibold'
-                    : 'bg-white border border-zinc-200 text-zinc-600 hover:bg-zinc-100'
-                }`}
-              >
-                <span className="font-bold text-[11px]">{q.circleNumber}</span>
-                <span>{q.title.split('&')[0].trim()}</span>
-                <span className="font-mono-num text-[11px] opacity-70">({count})</span>
-              </button>
-            );
-          })}
+        {/* Mobile Interactive 2x2 Matrix Navigator & Focus Switcher (Taste Skill App Screen) */}
+        <div className="md:hidden mb-3 bg-white rounded-2xl border border-zinc-200/90 p-2.5 shadow-2xs shrink-0">
+          <div className="flex items-center justify-between px-1 pb-2 mb-2 border-b border-zinc-100">
+            <span className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider">
+              Quadrant Navigator
+            </span>
+            <button
+              type="button"
+              onClick={() => setMobileQuadrantFilter('all')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                mobileQuadrantFilter === 'all'
+                  ? 'bg-zinc-900 text-white'
+                  : 'text-zinc-600 bg-zinc-100 hover:bg-zinc-200'
+              }`}
+            >
+              View All (4)
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            {quadrantConfigs.map((q) => {
+              const count = matrixTasks.filter(
+                (t) => resolveTaskQuadrant(t) === q.id && t.status !== 'completed'
+              ).length;
+              const isSelected = mobileQuadrantFilter === q.id;
+              return (
+                <button
+                  key={q.id}
+                  type="button"
+                  onClick={() => setMobileQuadrantFilter(q.id)}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${
+                    isSelected
+                      ? `${q.borderColor} bg-zinc-50 ring-2 ring-zinc-900/15 shadow-2xs`
+                      : 'border-zinc-200/80 hover:border-zinc-300 bg-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className={`text-xs font-bold ${q.titleColor}`}>{q.circleNumber}</span>
+                    <span className="font-mono-num text-[11px] font-bold text-zinc-700 bg-zinc-100 px-1.5 py-0.5 rounded-full">
+                      {count}
+                    </span>
+                  </div>
+                  <div className="text-[11.5px] font-bold text-zinc-800 truncate mt-1">
+                    {q.title.split('&')[0].trim()}
+                  </div>
+                  <div className="text-[10px] text-zinc-500 font-medium truncate">
+                    {q.id === 'q1' ? 'Do First' : q.id === 'q2' ? 'Schedule' : q.id === 'q3' ? 'Delegate' : "Don't Do"}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        {/* 2x2 Quadrants Grid */}
+        {/* 2x2 Quadrants Grid (Desktop: 2x2, Mobile: Focused or Stacked) */}
         <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3.5 min-h-[400px] md:min-h-[560px]">
           {quadrantConfigs.map((q) => {
             const qAllTasks = matrixTasks.filter((t) => resolveTaskQuadrant(t) === q.id);
@@ -687,9 +730,9 @@ export const EisenhowerMatrixModule: React.FC = () => {
                 key={q.id}
                 className={`${
                   isHiddenOnMobile ? 'hidden md:flex' : 'flex'
-                } relative bg-white rounded-xl border border-zinc-200 shadow-2xs flex-col overflow-hidden transition-all`}
+                } relative bg-white rounded-2xl md:rounded-xl border border-zinc-200 shadow-2xs flex-col overflow-hidden transition-all`}
               >
-                {/* Quadrant Header (Screenshots 1, 3, 4) */}
+                {/* Quadrant Header */}
                 <div className="px-3.5 py-2.5 border-b border-zinc-100 flex items-center justify-between shrink-0 bg-zinc-50/50">
                   <div className="flex items-center gap-2">
                     <span className={`text-base font-bold leading-none ${q.titleColor}`}>
@@ -701,13 +744,13 @@ export const EisenhowerMatrixModule: React.FC = () => {
                   </div>
 
                   {/* Actions on Quadrant Header: [+] and [...] */}
-                  <div className="flex items-center gap-0.5 text-zinc-400">
+                  <div className="flex items-center gap-1 text-zinc-400">
                     <button
                       type="button"
                       onClick={() => handleOpenQuickAddCard(q.id)}
                       title={`Add task to ${q.title}`}
                       aria-label={`Add task to ${q.title}`}
-                      className="p-1 rounded-md hover:bg-zinc-200/70 hover:text-zinc-800 transition-colors"
+                      className="p-1.5 sm:p-1 rounded-lg hover:bg-zinc-200/70 hover:text-zinc-800 transition-colors"
                     >
                       <Plus className="w-4 h-4" strokeWidth={2} />
                     </button>
@@ -721,447 +764,480 @@ export const EisenhowerMatrixModule: React.FC = () => {
                         }}
                         title={`Options for ${q.title}`}
                         aria-label={`Options for ${q.title}`}
-                        className="p-1 rounded-md hover:bg-zinc-200/70 hover:text-zinc-800 transition-colors"
+                        className="p-1.5 sm:p-1 rounded-lg hover:bg-zinc-200/70 hover:text-zinc-800 transition-colors"
                       >
                         <MoreHorizontal className="w-4 h-4" strokeWidth={2} />
                       </button>
 
-                      {/* Quadrant Header Dropdown Menu (Screenshot 4) */}
+                      {/* Responsive Quadrant Header Dropdown: Bottom Sheet on Mobile, Popover on Desktop */}
                       {isQuadrantMenuOpen && (
-                        <div
-                          onClick={(e) => e.stopPropagation()}
-                          className="absolute right-0 top-7 z-30 w-44 rounded-xl bg-white shadow-xl border border-zinc-200 py-1.5 text-xs text-zinc-700 animate-in fade-in zoom-in-95 duration-150"
-                        >
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditingQuadrant(q);
-                              setActiveQuadrantMenuQId(null);
-                            }}
-                            className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-100 text-left"
+                        <>
+                          <div
+                            className="fixed inset-0 z-30 bg-black/40 md:hidden"
+                            onClick={() => setActiveQuadrantMenuQId(null)}
+                          />
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            className="fixed inset-x-0 bottom-0 md:inset-auto md:right-0 md:top-7 z-40 md:w-48 rounded-t-3xl md:rounded-xl bg-white shadow-2xl md:shadow-xl border-t md:border border-zinc-200 p-5 md:py-1.5 md:px-0 text-xs text-zinc-700 max-h-[85vh] md:max-h-none overflow-y-auto animate-in fade-in slide-in-from-bottom md:slide-in-from-top-2 duration-150"
                           >
-                            <Edit2 className="w-3.5 h-3.5 text-zinc-500" />
-                            <span>Edit</span>
-                          </button>
-
-                          {/* Group by submenu */}
-                          <div className="px-3 py-1 text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
-                            Group by
-                          </div>
-                          {(['time', 'list', 'priority', 'none'] as GroupOption[]).map((opt) => (
+                            <div className="w-10 h-1 bg-zinc-300 rounded-full mx-auto mb-3 md:hidden" />
+                            <div className="md:hidden flex items-center justify-between mb-3 px-1">
+                              <span className="text-sm font-semibold text-zinc-900">Options for {q.title}</span>
+                              <button
+                                type="button"
+                                onClick={() => setActiveQuadrantMenuQId(null)}
+                                className="text-xs font-semibold text-blue-600 hover:text-blue-700 py-1 px-2 rounded-lg bg-blue-50"
+                              >
+                                Done
+                              </button>
+                            </div>
                             <button
-                              key={opt}
+                              type="button"
+                              onClick={() => {
+                                setEditingQuadrant(q);
+                                setActiveQuadrantMenuQId(null);
+                              }}
+                              className="w-full flex items-center gap-2 px-3 py-2 md:py-1.5 hover:bg-zinc-100 rounded-lg md:rounded-none text-left"
+                            >
+                              <Edit2 className="w-3.5 h-3.5 text-zinc-500" />
+                              <span>Edit</span>
+                            </button>
+
+                            {/* Group by submenu */}
+                            <div className="px-3 py-1 text-[10px] font-semibold text-zinc-400 uppercase tracking-wider border-t border-zinc-100 mt-1">
+                              Group by
+                            </div>
+                            {(['time', 'list', 'priority', 'none'] as GroupOption[]).map((opt) => (
+                              <button
+                                key={opt}
+                                type="button"
+                                onClick={() => {
+                                  setQuadrantSettings((prev) => ({
+                                    ...prev,
+                                    [q.id]: { ...prev[q.id], groupBy: opt },
+                                  }));
+                                  setActiveQuadrantMenuQId(null);
+                                }}
+                                className={`w-full flex items-center justify-between px-3 py-1.5 md:py-1 text-xs hover:bg-zinc-100 capitalize ${
+                                  quadrantSettings[q.id]?.groupBy === opt
+                                    ? 'text-blue-600 font-semibold'
+                                    : 'text-zinc-600'
+                                }`}
+                              >
+                                <span>{opt}</span>
+                                {quadrantSettings[q.id]?.groupBy === opt && (
+                                  <Check className="w-3 h-3 text-blue-600" />
+                                )}
+                              </button>
+                            ))}
+
+                            {/* Sort by submenu */}
+                            <div className="px-3 py-1 text-[10px] font-semibold text-zinc-400 uppercase tracking-wider border-t border-zinc-100 mt-1">
+                              Sort by
+                            </div>
+                            {(['time', 'title', 'priority', 'list'] as SortOption[]).map((opt) => (
+                              <button
+                                key={opt}
+                                type="button"
+                                onClick={() => {
+                                  setQuadrantSettings((prev) => ({
+                                    ...prev,
+                                    [q.id]: { ...prev[q.id], sortBy: opt },
+                                  }));
+                                  setActiveQuadrantMenuQId(null);
+                                }}
+                                className={`w-full flex items-center justify-between px-3 py-1.5 md:py-1 text-xs hover:bg-zinc-100 capitalize ${
+                                  quadrantSettings[q.id]?.sortBy === opt
+                                    ? 'text-blue-600 font-semibold'
+                                    : 'text-zinc-600'
+                                }`}
+                              >
+                                <span>{opt}</span>
+                                {quadrantSettings[q.id]?.sortBy === opt && (
+                                  <Check className="w-3 h-3 text-blue-600" />
+                                )}
+                              </button>
+                            ))}
+
+                            {/* Order submenu */}
+                            <div className="px-3 py-1 text-[10px] font-semibold text-zinc-400 uppercase tracking-wider border-t border-zinc-100 mt-1">
+                              Order
+                            </div>
+                            <button
                               type="button"
                               onClick={() => {
                                 setQuadrantSettings((prev) => ({
                                   ...prev,
-                                  [q.id]: { ...prev[q.id], groupBy: opt },
-                                }));
-                                setActiveQuadrantMenuQId(null);
-                              }}
-                              className={`w-full flex items-center justify-between px-3 py-1 text-xs hover:bg-zinc-100 capitalize ${
-                                quadrantSettings[q.id]?.groupBy === opt
-                                  ? 'text-blue-600 font-semibold'
-                                  : 'text-zinc-600'
-                              }`}
-                            >
-                              <span>{opt}</span>
-                              {quadrantSettings[q.id]?.groupBy === opt && (
-                                <Check className="w-3 h-3 text-blue-600" />
-                              )}
-                            </button>
-                          ))}
-
-                          {/* Sort by submenu */}
-                          <div className="px-3 py-1 text-[10px] font-semibold text-zinc-400 uppercase tracking-wider border-t border-zinc-100 mt-1">
-                            Sort by
-                          </div>
-                          {(['time', 'title', 'priority', 'list'] as SortOption[]).map((opt) => (
-                            <button
-                              key={opt}
-                              type="button"
-                              onClick={() => {
-                                setQuadrantSettings((prev) => ({
-                                  ...prev,
-                                  [q.id]: { ...prev[q.id], sortBy: opt },
-                                }));
-                                setActiveQuadrantMenuQId(null);
-                              }}
-                              className={`w-full flex items-center justify-between px-3 py-1 text-xs hover:bg-zinc-100 capitalize ${
-                                quadrantSettings[q.id]?.sortBy === opt
-                                  ? 'text-blue-600 font-semibold'
-                                  : 'text-zinc-600'
-                              }`}
-                            >
-                              <span>{opt}</span>
-                              {quadrantSettings[q.id]?.sortBy === opt && (
-                                <Check className="w-3 h-3 text-blue-600" />
-                              )}
-                            </button>
-                          ))}
-
-                          {/* Order submenu */}
-                          <div className="px-3 py-1 text-[10px] font-semibold text-zinc-400 uppercase tracking-wider border-t border-zinc-100 mt-1">
-                            Order
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setQuadrantSettings((prev) => ({
-                                ...prev,
                                   [q.id]: { ...prev[q.id], order: 'asc' },
-                              }));
-                              setActiveQuadrantMenuQId(null);
-                            }}
-                            className={`w-full flex items-center justify-between px-3 py-1 text-xs hover:bg-zinc-100 ${
-                              quadrantSettings[q.id]?.order === 'asc'
-                                ? 'text-blue-600 font-semibold'
-                                : 'text-zinc-600'
-                            }`}
-                          >
-                            <span>Oldest First</span>
-                            {quadrantSettings[q.id]?.order === 'asc' && (
-                              <Check className="w-3 h-3 text-blue-600" />
-                            )}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setQuadrantSettings((prev) => ({
-                                ...prev,
-                                [q.id]: { ...prev[q.id], order: 'desc' },
-                              }));
-                              setActiveQuadrantMenuQId(null);
-                            }}
-                            className={`w-full flex items-center justify-between px-3 py-1 text-xs hover:bg-zinc-100 ${
-                              quadrantSettings[q.id]?.order === 'desc'
-                                ? 'text-blue-600 font-semibold'
-                                : 'text-zinc-600'
-                            }`}
-                          >
-                            <span>Newest First</span>
-                            {quadrantSettings[q.id]?.order === 'desc' && (
-                              <Check className="w-3 h-3 text-blue-600" />
-                            )}
-                          </button>
-                        </div>
+                                }));
+                                setActiveQuadrantMenuQId(null);
+                              }}
+                              className={`w-full flex items-center justify-between px-3 py-1.5 md:py-1 text-xs hover:bg-zinc-100 ${
+                                quadrantSettings[q.id]?.order === 'asc'
+                                  ? 'text-blue-600 font-semibold'
+                                  : 'text-zinc-600'
+                              }`}
+                            >
+                              <span>Oldest First</span>
+                              {quadrantSettings[q.id]?.order === 'asc' && (
+                                <Check className="w-3 h-3 text-blue-600" />
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setQuadrantSettings((prev) => ({
+                                  ...prev,
+                                  [q.id]: { ...prev[q.id], order: 'desc' },
+                                }));
+                                setActiveQuadrantMenuQId(null);
+                              }}
+                              className={`w-full flex items-center justify-between px-3 py-1.5 md:py-1 text-xs hover:bg-zinc-100 ${
+                                quadrantSettings[q.id]?.order === 'desc'
+                                  ? 'text-blue-600 font-semibold'
+                                  : 'text-zinc-600'
+                              }`}
+                            >
+                              <span>Newest First</span>
+                              {quadrantSettings[q.id]?.order === 'desc' && (
+                                <Check className="w-3 h-3 text-blue-600" />
+                              )}
+                            </button>
+                          </div>
+                        </>
                       )}
                     </div>
                   </div>
                 </div>
 
-                {/* In-Quadrant Floating Quick-Add Card (Screenshots 1 & 2) */}
+                {/* Single Responsive Quick-Add Card (In-Quadrant on Desktop, Bottom Sheet on Mobile) */}
                 {isQuickAddActive && (
-                  <div
-                    onClick={(e) => e.stopPropagation()}
-                    className="m-3 p-3.5 rounded-xl bg-zinc-900 text-zinc-100 shadow-xl border border-zinc-800 space-y-3 animate-in fade-in zoom-in-95 duration-150"
-                  >
-                    {/* Top Bar: Due Date | Priority Flag */}
-                    <div className="flex items-center justify-between">
-                      <div className="relative">
-                        <button
-                          type="button"
-                          onClick={() => setShowQuickAddDatePopover(!showQuickAddDatePopover)}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 transition-colors"
-                        >
-                          <Calendar className="w-3.5 h-3.5 text-zinc-400" />
-                          <span>
-                            {quickAddDueDate
-                              ? quickAddDueDate === todayStr
-                                ? 'Today'
-                                : quickAddDueDate === tomorrowStr
-                                  ? 'Tomorrow'
-                                  : format(parseISO(quickAddDueDate), 'MMM d')
-                              : 'Due Date'}
-                          </span>
-                        </button>
+                  <>
+                    <div
+                      className="fixed inset-0 z-40 bg-black/60 md:hidden"
+                      onClick={() => setActiveQuickAddQId(null)}
+                    />
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      className="fixed inset-x-0 bottom-0 md:relative md:inset-auto z-50 md:z-auto m-0 md:m-3 p-5 md:p-3.5 rounded-t-3xl md:rounded-xl bg-white md:bg-zinc-900 text-zinc-900 md:text-zinc-100 shadow-2xl md:shadow-xl border-t md:border border-zinc-200 md:border-zinc-800 space-y-3.5 md:space-y-3 pb-[calc(2rem+env(safe-area-inset-bottom,0px))] md:pb-3.5 animate-in fade-in slide-in-from-bottom md:slide-in-from-none duration-200"
+                    >
+                      {/* Mobile Top Drag Handle */}
+                      <div className="w-10 h-1 bg-zinc-300 rounded-full mx-auto -mt-1 md:hidden" />
 
-                        {showQuickAddDatePopover && (
-                          <div className="absolute left-0 top-8 z-40 w-44 rounded-xl bg-zinc-800 border border-zinc-700 shadow-xl p-1.5 text-xs text-zinc-200">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setQuickAddDueDate(undefined);
-                                setShowQuickAddDatePopover(false);
-                              }}
-                              className="w-full text-left px-2 py-1 rounded hover:bg-zinc-700"
-                            >
-                              No Date
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setQuickAddDueDate(todayStr);
-                                setShowQuickAddDatePopover(false);
-                              }}
-                              className="w-full text-left px-2 py-1 rounded hover:bg-zinc-700"
-                            >
-                              Today
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setQuickAddDueDate(tomorrowStr);
-                                setShowQuickAddDatePopover(false);
-                              }}
-                              className="w-full text-left px-2 py-1 rounded hover:bg-zinc-700"
-                            >
-                              Tomorrow
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setQuickAddDueDate(in7DaysStr);
-                                setShowQuickAddDatePopover(false);
-                              }}
-                              className="w-full text-left px-2 py-1 rounded hover:bg-zinc-700"
-                            >
-                              Next Week
-                            </button>
-                            <div className="pt-1 border-t border-zinc-700">
-                              <input
-                                type="date"
-                                value={quickAddDueDate || todayStr}
-                                onChange={(e) => {
-                                  setQuickAddDueDate(e.target.value);
-                                  setShowQuickAddDatePopover(false);
-                                }}
-                                className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200"
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Priority Flag */}
-                      <div className="flex items-center gap-1">
-                        {([5, 3, 1, 0] as Priority[]).map((p) => (
-                          <button
-                            key={p}
-                            type="button"
-                            onClick={() => setQuickAddPriority(p)}
-                            className={`p-1 rounded-md transition-colors ${
-                              quickAddPriority === p
-                                ? 'bg-zinc-800 ring-1 ring-white/20'
-                                : 'opacity-40 hover:opacity-100'
-                            }`}
-                          >
-                            <Flag
-                              className={`w-3.5 h-3.5 ${
-                                p === 5
-                                  ? 'text-rose-500 fill-rose-500'
-                                  : p === 3
-                                    ? 'text-amber-500 fill-amber-500'
-                                    : p === 1
-                                      ? 'text-blue-500 fill-blue-500'
-                                      : 'text-zinc-400'
-                              }`}
-                            />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Inputs: Title and Commands / Notes */}
-                    <div className="space-y-1.5">
-                      <input
-                        type="text"
-                        autoFocus
-                        value={quickAddTitle}
-                        onChange={(e) => setQuickAddTitle(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSubmitQuickAddCard();
-                          }
-                          if (e.key === 'Escape') {
-                            setActiveQuickAddQId(null);
-                          }
-                        }}
-                        placeholder="What would you like to do?"
-                        className="w-full text-sm font-semibold bg-transparent text-white placeholder:text-zinc-500 focus:outline-none"
-                      />
-
-                      <textarea
-                        rows={2}
-                        value={quickAddContent}
-                        onChange={(e) => setQuickAddContent(e.target.value)}
-                        placeholder="Write something or type / for commands"
-                        className="w-full text-xs text-zinc-300 placeholder:text-zinc-500 bg-transparent focus:outline-none resize-none leading-relaxed"
-                      />
-                    </div>
-
-                    {/* Tags preview if selected */}
-                    {quickAddTags.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {quickAddTags.map((tag) => (
-                          <span
-                            key={tag}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-800 text-[11px] text-zinc-300"
-                          >
-                            #{tag}
-                            <button
-                              type="button"
-                              onClick={() => setQuickAddTags((prev) => prev.filter((t) => t !== tag))}
-                              className="text-zinc-500 hover:text-zinc-200"
-                            >
-                              <X className="w-2.5 h-2.5" />
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Bottom Bar: List Selector | Action Menu | Submit Buttons */}
-                    <div className="flex items-center justify-between pt-1 border-t border-zinc-800 text-xs">
-                      {/* List Selector Pill */}
-                      <div className="relative">
-                        <button
-                          type="button"
-                          onClick={() => setShowQuickAddListPopover(!showQuickAddListPopover)}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 transition-colors"
-                        >
-                          {quickAddListId === 'inbox' ? (
-                            <>
-                              <Inbox className="w-3.5 h-3.5 text-zinc-400" />
-                              <span>Inbox</span>
-                            </>
-                          ) : (
-                            <>
-                              <Folder className="w-3.5 h-3.5 text-zinc-400" />
-                              <span>{lists.find((l) => l.id === quickAddListId)?.name || 'Inbox'}</span>
-                            </>
-                          )}
-                        </button>
-
-                        {showQuickAddListPopover && (
-                          <div className="absolute left-0 bottom-8 z-40 w-44 rounded-xl bg-zinc-800 border border-zinc-700 shadow-xl p-1 text-xs text-zinc-200">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setQuickAddListId('inbox');
-                                setShowQuickAddListPopover(false);
-                              }}
-                              className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded hover:bg-zinc-700 text-left"
-                            >
-                              <Inbox className="w-3.5 h-3.5 text-zinc-400" />
-                              <span>Inbox</span>
-                            </button>
-                            {lists.map((l) => (
-                              <button
-                                key={l.id}
-                                type="button"
-                                onClick={() => {
-                                  setQuickAddListId(l.id);
-                                  setShowQuickAddListPopover(false);
-                                }}
-                                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded hover:bg-zinc-700 text-left"
-                              >
-                                {l.emoji ? <span>{l.emoji}</span> : <Folder className="w-3.5 h-3.5 text-zinc-400" />}
-                                <span>{l.name}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Right Action Menu (...) & Submit Button */}
-                      <div className="flex items-center gap-2">
+                      {/* Header row: Due Date | Priority Flag | Close button */}
+                      <div className="flex items-center justify-between">
                         <div className="relative">
                           <button
                             type="button"
-                            onClick={() => setShowQuickAddMoreMenu(!showQuickAddMoreMenu)}
-                            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+                            onClick={() => setShowQuickAddDatePopover(!showQuickAddDatePopover)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 md:py-1 rounded-lg text-xs font-medium text-zinc-700 md:text-zinc-300 hover:text-zinc-900 md:hover:text-white bg-zinc-100 md:bg-zinc-800 hover:bg-zinc-200 md:hover:bg-zinc-700 transition-colors"
                           >
-                            <MoreHorizontal className="w-4 h-4" />
+                            <Calendar className="w-3.5 h-3.5 text-blue-600 md:text-zinc-400" />
+                            <span>
+                              {quickAddDueDate
+                                ? quickAddDueDate === todayStr
+                                  ? 'Today'
+                                  : quickAddDueDate === tomorrowStr
+                                    ? 'Tomorrow'
+                                    : format(parseISO(quickAddDueDate), 'MMM d')
+                                : 'Due Date'}
+                            </span>
                           </button>
 
-                          {/* Quick Add More Menu (Screenshot 1) */}
-                          {showQuickAddMoreMenu && (
-                            <div className="absolute right-0 bottom-8 z-40 w-48 rounded-xl bg-zinc-800 border border-zinc-700 shadow-xl py-1 text-xs text-zinc-200">
+                          {showQuickAddDatePopover && (
+                            <div className="absolute left-0 top-8 z-40 w-44 rounded-xl bg-white md:bg-zinc-800 border border-zinc-200 md:border-zinc-700 shadow-xl p-1.5 text-xs text-zinc-800 md:text-zinc-200">
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setShowQuickAddTagPicker(true);
-                                  setShowQuickAddMoreMenu(false);
+                                  setQuickAddDueDate(undefined);
+                                  setShowQuickAddDatePopover(false);
                                 }}
-                                className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-zinc-700 text-left"
+                                className="w-full text-left px-2 py-1 rounded hover:bg-zinc-100 md:hover:bg-zinc-700"
                               >
-                                <Tag className="w-3.5 h-3.5 text-zinc-400" />
-                                <span>Tags</span>
+                                No Date
                               </button>
-
                               <button
                                 type="button"
                                 onClick={() => {
-                                  const name = prompt('Attachment title / filename:', 'document.pdf');
-                                  if (name) {
-                                    setQuickAddAttachments((prev) => [
-                                      ...prev,
-                                      {
-                                        id: `att-${Date.now()}`,
-                                        name,
-                                        url: '#',
-                                        size: '128 KB',
-                                        type: 'doc',
-                                        uploadedAt: new Date().toISOString(),
-                                      },
-                                    ]);
-                                  }
-                                  setShowQuickAddMoreMenu(false);
+                                  setQuickAddDueDate(todayStr);
+                                  setShowQuickAddDatePopover(false);
                                 }}
-                                className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-zinc-700 text-left"
+                                className="w-full text-left px-2 py-1 rounded hover:bg-zinc-100 md:hover:bg-zinc-700"
                               >
-                                <Paperclip className="w-3.5 h-3.5 text-zinc-400" />
-                                <span>Upload Attachment</span>
+                                Today
                               </button>
-
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setShowQuickAddTemplatePicker(true);
-                                  setShowQuickAddMoreMenu(false);
+                                  setQuickAddDueDate(tomorrowStr);
+                                  setShowQuickAddDatePopover(false);
                                 }}
-                                className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-zinc-700 text-left"
+                                className="w-full text-left px-2 py-1 rounded hover:bg-zinc-100 md:hover:bg-zinc-700"
                               >
-                                <Copy className="w-3.5 h-3.5 text-zinc-400" />
-                                <span>Add from Template</span>
+                                Tomorrow
                               </button>
-
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setQuickAddIsNote(!quickAddIsNote);
-                                  setShowQuickAddMoreMenu(false);
+                                  setQuickAddDueDate(in7DaysStr);
+                                  setShowQuickAddDatePopover(false);
                                 }}
-                                className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-zinc-700 text-left"
+                                className="w-full text-left px-2 py-1 rounded hover:bg-zinc-100 md:hover:bg-zinc-700"
                               >
-                                <FileText className="w-3.5 h-3.5 text-zinc-400" />
-                                <span>{quickAddIsNote ? 'Convert to Task' : 'Convert to Note'}</span>
+                                Next Week
                               </button>
+                              <div className="pt-1 border-t border-zinc-200 md:border-zinc-700">
+                                <input
+                                  type="date"
+                                  value={quickAddDueDate || todayStr}
+                                  onChange={(e) => {
+                                    setQuickAddDueDate(e.target.value);
+                                    setShowQuickAddDatePopover(false);
+                                  }}
+                                  className="w-full bg-zinc-50 md:bg-zinc-900 border border-zinc-200 md:border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-800 md:text-zinc-200"
+                                />
+                              </div>
                             </div>
                           )}
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => setActiveQuickAddQId(null)}
-                          className="px-2.5 py-1 text-xs text-zinc-400 hover:text-white"
-                        >
-                          Cancel
-                        </button>
+                        {/* Priority Flag */}
+                        <div className="flex items-center gap-1">
+                          {([5, 3, 1, 0] as Priority[]).map((p) => (
+                            <button
+                              key={p}
+                              type="button"
+                              onClick={() => setQuickAddPriority(p)}
+                              className={`p-1 rounded-md transition-colors ${
+                                quickAddPriority === p
+                                  ? 'bg-zinc-200 md:bg-zinc-800 ring-1 ring-zinc-400 md:ring-white/20'
+                                  : 'opacity-40 hover:opacity-100'
+                              }`}
+                            >
+                              <Flag
+                                className={`w-3.5 h-3.5 ${
+                                  p === 5
+                                    ? 'text-rose-500 fill-rose-500'
+                                    : p === 3
+                                      ? 'text-amber-500 fill-amber-500'
+                                      : p === 1
+                                        ? 'text-blue-500 fill-blue-500'
+                                        : 'text-zinc-400'
+                                }`}
+                              />
+                            </button>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => setActiveQuickAddQId(null)}
+                            className="md:hidden p-1 text-zinc-400 hover:text-zinc-700 ml-1"
+                          >
+                            <X className="w-5 h-5" />
+                          </button>
+                        </div>
+                      </div>
 
-                        <button
-                          type="button"
-                          onClick={() => handleSubmitQuickAddCard()}
-                          disabled={!quickAddTitle.trim()}
-                          className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-medium text-xs shadow-sm transition-colors"
-                        >
-                          Add Task
-                        </button>
+                      {/* Inputs: Title and Commands / Notes */}
+                      <div className="space-y-1.5">
+                        <input
+                          type="text"
+                          autoFocus
+                          value={quickAddTitle}
+                          onChange={(e) => setQuickAddTitle(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              handleSubmitQuickAddCard();
+                            }
+                            if (e.key === 'Escape') {
+                              setActiveQuickAddQId(null);
+                            }
+                          }}
+                          placeholder="What would you like to do?"
+                          className="w-full text-base md:text-sm font-semibold bg-transparent text-zinc-900 md:text-white placeholder:text-zinc-400 md:placeholder:text-zinc-500 focus:outline-none"
+                        />
+
+                        <textarea
+                          rows={2}
+                          value={quickAddContent}
+                          onChange={(e) => setQuickAddContent(e.target.value)}
+                          placeholder="Write something or type / for commands"
+                          className="w-full text-xs text-zinc-600 md:text-zinc-300 placeholder:text-zinc-400 md:placeholder:text-zinc-500 bg-transparent focus:outline-none resize-none leading-relaxed"
+                        />
+                      </div>
+
+                      {/* Tags preview */}
+                      {quickAddTags.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {quickAddTags.map((tag) => (
+                            <span
+                              key={tag}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-100 md:bg-zinc-800 text-[11px] text-zinc-700 md:text-zinc-300"
+                            >
+                              #{tag}
+                              <button
+                                type="button"
+                                onClick={() => setQuickAddTags((prev) => prev.filter((t) => t !== tag))}
+                                className="text-zinc-400 hover:text-zinc-700 md:hover:text-zinc-200"
+                              >
+                                <X className="w-2.5 h-2.5" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Bottom Bar: List Selector | Action Menu | Submit Buttons */}
+                      <div className="flex items-center justify-between pt-1 border-t border-zinc-100 md:border-zinc-800 text-xs">
+                        {/* List Selector Pill */}
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setShowQuickAddListPopover(!showQuickAddListPopover)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 md:py-1 rounded-lg bg-zinc-100 md:bg-zinc-800 text-zinc-700 md:text-zinc-300 hover:text-zinc-900 md:hover:text-white hover:bg-zinc-200 md:hover:bg-zinc-700 transition-colors"
+                          >
+                            {quickAddListId === 'inbox' ? (
+                              <>
+                                <Inbox className="w-3.5 h-3.5 text-zinc-400" />
+                                <span>Inbox</span>
+                              </>
+                            ) : (
+                              <>
+                                <Folder className="w-3.5 h-3.5 text-zinc-400" />
+                                <span>{lists.find((l) => l.id === quickAddListId)?.name || 'Inbox'}</span>
+                              </>
+                            )}
+                          </button>
+
+                          {showQuickAddListPopover && (
+                            <div className="absolute left-0 bottom-8 z-40 w-44 rounded-xl bg-white md:bg-zinc-800 border border-zinc-200 md:border-zinc-700 shadow-xl p-1 text-xs text-zinc-800 md:text-zinc-200">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setQuickAddListId('inbox');
+                                  setShowQuickAddListPopover(false);
+                                }}
+                                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded hover:bg-zinc-100 md:hover:bg-zinc-700 text-left"
+                              >
+                                <Inbox className="w-3.5 h-3.5 text-zinc-400" />
+                                <span>Inbox</span>
+                              </button>
+                              {lists.map((l) => (
+                                <button
+                                  key={l.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setQuickAddListId(l.id);
+                                    setShowQuickAddListPopover(false);
+                                  }}
+                                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded hover:bg-zinc-100 md:hover:bg-zinc-700 text-left"
+                                >
+                                  {l.emoji ? <span>{l.emoji}</span> : <Folder className="w-3.5 h-3.5 text-zinc-400" />}
+                                  <span>{l.name}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Right Action Menu (...) & Submit Button */}
+                        <div className="flex items-center gap-2">
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={() => setShowQuickAddMoreMenu(!showQuickAddMoreMenu)}
+                              className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-900 md:hover:text-white hover:bg-zinc-100 md:hover:bg-zinc-800 transition-colors"
+                            >
+                              <MoreHorizontal className="w-4 h-4" />
+                            </button>
+
+                            {/* Quick Add More Menu */}
+                            {showQuickAddMoreMenu && (
+                              <div className="absolute right-0 bottom-8 z-40 w-48 rounded-xl bg-white md:bg-zinc-800 border border-zinc-200 md:border-zinc-700 shadow-xl py-1 text-xs text-zinc-800 md:text-zinc-200">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setShowQuickAddTagPicker(true);
+                                    setShowQuickAddMoreMenu(false);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-zinc-100 md:hover:bg-zinc-700 text-left"
+                                >
+                                  <Tag className="w-3.5 h-3.5 text-zinc-400" />
+                                  <span>Tags</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const name = prompt('Attachment title / filename:', 'document.pdf');
+                                    if (name) {
+                                      setQuickAddAttachments((prev) => [
+                                        ...prev,
+                                        {
+                                          id: `att-${Date.now()}`,
+                                          name,
+                                          url: '#',
+                                          size: '128 KB',
+                                          type: 'doc',
+                                          uploadedAt: new Date().toISOString(),
+                                        },
+                                      ]);
+                                    }
+                                    setShowQuickAddMoreMenu(false);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-zinc-100 md:hover:bg-zinc-700 text-left"
+                                >
+                                  <Paperclip className="w-3.5 h-3.5 text-zinc-400" />
+                                  <span>Upload Attachment</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setShowQuickAddTemplatePicker(true);
+                                    setShowQuickAddMoreMenu(false);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-zinc-100 md:hover:bg-zinc-700 text-left"
+                                >
+                                  <Copy className="w-3.5 h-3.5 text-zinc-400" />
+                                  <span>Add from Template</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setQuickAddIsNote(!quickAddIsNote);
+                                    setShowQuickAddMoreMenu(false);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-zinc-100 md:hover:bg-zinc-700 text-left"
+                                >
+                                  <FileText className="w-3.5 h-3.5 text-zinc-400" />
+                                  <span>{quickAddIsNote ? 'Convert to Task' : 'Convert to Note'}</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setActiveQuickAddQId(null)}
+                            className="px-2.5 py-1 text-xs text-zinc-500 md:text-zinc-400 hover:text-zinc-900 md:hover:text-white"
+                          >
+                            Cancel
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleSubmitQuickAddCard()}
+                            disabled={!quickAddTitle.trim()}
+                            className="px-3.5 py-1.5 md:py-1 rounded-xl md:rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-medium text-xs shadow-sm transition-colors"
+                          >
+                            Add Task
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  </>
                 )}
 
                 {/* Quadrant Body: Grouped Tasks */}
@@ -1172,7 +1248,6 @@ export const EisenhowerMatrixModule: React.FC = () => {
                     </div>
                   ) : (
                     <>
-                      {/* Render Each Group (e.g. ⌄ No Date 10) */}
                       {groupedSections.map((group) => {
                         const isCollapsed = collapsedGroups[`${q.id}-${group.groupKey}`];
                         return (
@@ -1209,7 +1284,7 @@ export const EisenhowerMatrixModule: React.FC = () => {
                         );
                       })}
 
-                      {/* Completed section if NOT hidden via menu */}
+                      {/* Completed section */}
                       {!hideCompleted && qCompletedTasks.length > 0 && (
                         <div className="pt-2 border-t border-zinc-100">
                           <button
@@ -1244,7 +1319,7 @@ export const EisenhowerMatrixModule: React.FC = () => {
                   )}
                 </div>
 
-                {/* Instant Inline Quick-Add Input (Bottom of Quadrant for rapid typing & E2E compatibility) */}
+                {/* Instant Inline Quick-Add Input (Bottom of Quadrant) */}
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
@@ -1259,7 +1334,7 @@ export const EisenhowerMatrixModule: React.FC = () => {
                     });
                     setInlineQuickInputs((prev) => ({ ...prev, [q.id]: '' }));
                   }}
-                  className="px-3 py-1.5 border-t border-zinc-100 flex items-center gap-2 bg-zinc-50/60"
+                  className="px-3 py-2 sm:py-1.5 border-t border-zinc-100 flex items-center gap-2 bg-zinc-50/60"
                 >
                   <Plus className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
                   <input
@@ -1269,7 +1344,7 @@ export const EisenhowerMatrixModule: React.FC = () => {
                       setInlineQuickInputs((prev) => ({ ...prev, [q.id]: e.target.value }))
                     }
                     placeholder={`+ Add to ${q.title}...`}
-                    className="flex-1 text-xs bg-transparent focus:outline-none text-zinc-800 placeholder:text-zinc-400"
+                    className="flex-1 text-xs bg-transparent focus:outline-none text-zinc-800 placeholder:text-zinc-400 py-0.5"
                   />
                 </form>
               </section>
@@ -1277,6 +1352,65 @@ export const EisenhowerMatrixModule: React.FC = () => {
           })}
         </div>
       </div>
+
+      {/* Mobile Floating Action Button (FAB) to Add Task */}
+      <button
+        type="button"
+        onClick={() => handleOpenQuickAddCard(mobileQuadrantFilter === 'all' ? 'q1' : mobileQuadrantFilter)}
+        className="md:hidden fixed bottom-18 right-4 z-20 w-12 h-12 rounded-full bg-zinc-900 text-white shadow-xl flex items-center justify-center hover:bg-zinc-800 active:scale-95 transition-all"
+        title="Add Task to Matrix"
+        aria-label="Quick add task"
+      >
+        <Plus className="w-6 h-6" strokeWidth={2.25} />
+      </button>
+
+      {/* Mobile Slide-Up Quadrant Mover Sheet */}
+      {movingTask && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setMovingTask(null)}
+          className="md:hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex flex-col justify-end p-0 animate-in fade-in"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full bg-white rounded-t-3xl shadow-2xl border-t border-zinc-200 p-5 space-y-3 pb-[calc(2rem+env(safe-area-inset-bottom,0px))] text-zinc-900 animate-in slide-in-from-bottom"
+          >
+            <div className="w-10 h-1 bg-zinc-300 rounded-full mx-auto -mt-1 mb-2" />
+            <h3 className="text-sm font-bold text-zinc-900">Move Task to Quadrant</h3>
+            <p className="text-xs text-zinc-500 truncate">{movingTask.title}</p>
+            <div className="space-y-2 pt-1">
+              {quadrantConfigs.map((q) => (
+                <button
+                  key={q.id}
+                  type="button"
+                  onClick={() => {
+                    updateTask(movingTask.id, { eisenhowerQuadrant: q.id });
+                    pushToast({
+                      title: 'Moved Task',
+                      description: `Moved to ${q.title}`,
+                      kind: 'success',
+                    });
+                    setMovingTask(null);
+                  }}
+                  className="w-full flex items-center justify-between p-3 rounded-xl border border-zinc-200 bg-zinc-50/70 hover:bg-zinc-100 text-left transition-colors"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span className="font-bold text-sm">{q.circleNumber}</span>
+                    <div>
+                      <div className="text-xs font-bold text-zinc-800">{q.title}</div>
+                      <div className="text-[11px] text-zinc-500">{q.subtitle}</div>
+                    </div>
+                  </div>
+                  {resolveTaskQuadrant(movingTask) === q.id && (
+                    <Check className="w-4 h-4 text-blue-600" />
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Floating Task Detail Popover Card on Click */}
       {selectedTask && (
@@ -1490,7 +1624,7 @@ export const EisenhowerMatrixModule: React.FC = () => {
                 </div>
               </div>
 
-              {/* Optional Comments */}
+              {/* Comments */}
               {showCommentBox && (
                 <div className="space-y-2 pt-2 border-t border-zinc-100">
                   {selectedTask.comments.map((c) => (
@@ -1623,7 +1757,7 @@ export const EisenhowerMatrixModule: React.FC = () => {
         </div>
       )}
 
-      {/* User Guide Modal (Screenshot 3) */}
+      {/* User Guide Modal */}
       {isUserGuideOpen && (
         <div
           role="dialog"
@@ -1710,9 +1844,9 @@ export const EisenhowerMatrixModule: React.FC = () => {
               <div className="p-3 rounded-xl bg-zinc-50 border border-zinc-200 text-xs text-zinc-600 space-y-1.5">
                 <div className="font-semibold text-zinc-800">Productivity Pro-Tips:</div>
                 <ul className="list-disc pl-4 space-y-0.5 text-[11.5px]">
-                  <li>Click <strong>+</strong> in any quadrant header to open the Quick-Add Card with due date, priority, and list targeting.</li>
-                  <li>Click <strong>...</strong> on any quadrant header to change its <strong>Group by</strong> (Time, List, Priority) or sort order.</li>
-                  <li>Click any task to inspect its checklist, notes, and activity history.</li>
+                  <li>On mobile, use the <strong>Quadrant Navigator</strong> to focus on one quadrant or view all.</li>
+                  <li>Tap the <strong>Q1-Q4 badge</strong> on any task to immediately move it to another quadrant.</li>
+                  <li>Tap <strong>+</strong> in any quadrant header or the bottom FAB to open the mobile quick-add sheet.</li>
                 </ul>
               </div>
 
@@ -1730,7 +1864,7 @@ export const EisenhowerMatrixModule: React.FC = () => {
         </div>
       )}
 
-      {/* Manage View Modal (Screenshot 3) */}
+      {/* Manage View Modal */}
       {isManageViewOpen && (
         <div
           role="dialog"
@@ -1757,7 +1891,6 @@ export const EisenhowerMatrixModule: React.FC = () => {
                 </button>
               </div>
 
-              {/* View options */}
               <div className="space-y-3 text-xs">
                 <div>
                   <label className="block font-semibold text-zinc-700 mb-1">
@@ -1830,7 +1963,7 @@ export const EisenhowerMatrixModule: React.FC = () => {
         </div>
       )}
 
-      {/* Edit Quadrant Modal (Screenshot 4) */}
+      {/* Edit Quadrant Modal */}
       {editingQuadrant && (
         <div
           role="dialog"

@@ -447,12 +447,12 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
     // 1. Verify Header and Top More Menu (...)
     await expect(page.getByRole('heading', { name: 'Eisenhower Matrix' })).toBeVisible();
     await page.locator('button[aria-label="Eisenhower Matrix options"]').click();
-    await expect(page.getByText('Manage View')).toBeVisible();
-    await expect(page.getByText('Hide Completed')).toBeVisible();
-    await expect(page.getByText('User Guide')).toBeVisible();
+    await expect(page.getByText('Manage View').first()).toBeVisible();
+    await expect(page.getByText('Hide Completed').first()).toBeVisible();
+    await expect(page.getByText('User Guide').first()).toBeVisible();
 
     // 2. Open User Guide Modal
-    await page.getByText('User Guide').click();
+    await page.getByText('User Guide').first().click();
     await expect(page.getByText('Eisenhower Matrix User Guide')).toBeVisible();
     await expect(page.getByText(/What is important is seldom urgent/i)).toBeVisible();
     await page.getByRole('button', { name: 'Got It' }).click();
@@ -475,7 +475,12 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
     await expect(page.getByText('Oldest First').first()).toBeVisible();
     await expect(page.getByText('Newest First').first()).toBeVisible();
 
-    // Click outside to close menu
-    await page.locator('h1', { hasText: 'Eisenhower Matrix' }).click();
+    // Dismiss menu by clicking Done on mobile or clicking outside on desktop
+    const doneBtn = page.getByRole('button', { name: 'Done', exact: true });
+    if (await doneBtn.isVisible()) {
+      await doneBtn.click();
+    } else {
+      await page.locator('h1', { hasText: 'Eisenhower Matrix' }).click();
+    }
   });
 });
