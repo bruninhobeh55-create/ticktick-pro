@@ -46,6 +46,7 @@ const RANGE_KEY = 'ticktick_calendar_range';
 const pad = (n: number) => String(n).padStart(2, '0');
 const minutesToTime = (m: number) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
 const clampZoom = (v: number) => Math.min(2.5, Math.max(0.5, Math.round(v * 10) / 10));
+const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
 
 interface DayRange {
   startHour: number;
@@ -234,6 +235,7 @@ export const CalendarModule: React.FC = () => {
   );
 
   const rowHeight = Math.round(BASE_ROW_HEIGHT * zoom);
+  const totalHeight = hours.length * rowHeight;
 
   const handleNavigate = (dir: -1 | 1) => {
     if (subView === 'month') {
@@ -300,21 +302,6 @@ export const CalendarModule: React.FC = () => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     if (dropKey !== key) setDropKey(key);
-  };
-
-  const handleSlotDrop = (e: React.DragEvent<HTMLDivElement>, dateStr: string, hour: number) => {
-    e.preventDefault();
-    const taskId = e.dataTransfer.getData('text/plain') || draggingTaskId;
-    setDropKey(null);
-    setDraggingTaskId(null);
-    if (!taskId) return;
-
-    const rect = e.currentTarget.getBoundingClientRect();
-    const ratio = Math.min(0.999, Math.max(0, (e.clientY - rect.top) / rect.height));
-    let snapped = Math.round((ratio * 60) / SNAP_MINUTES) * SNAP_MINUTES;
-    if (snapped >= 60) snapped = 60 - SNAP_MINUTES;
-
-    scheduleTaskAt(taskId, dateStr, `${pad(hour)}:${pad(snapped)}`);
   };
 
   const handleAllDayDrop = (e: React.DragEvent<HTMLDivElement>, dateStr: string) => {
@@ -397,26 +384,73 @@ export const CalendarModule: React.FC = () => {
 
   // ---------- Criar tarefa clicando e arrastando na grade ----------
 
-  const slotPointerRatio = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    return Math.min(0.999, Math.max(0, (e.clientY - rect.top) / rect.height));
+  const minuteAtY = (y: number, mode: 'floor' | 'ceil') => {
+    const steps = (y / rowHeight) * (60 / SNAP_MINUTES);
+    const idx = mode === 'floor' ? Math.floor(steps) : Math.ceil(steps);
+    const m = dayRange.startHour * 60 + idx * SNAP_MINUTES;
+    return Math.min(Math.max(m, dayRange.startHour * 60), dayRange.endHour * 60 - SNAP_MINUTES);
   };
 
-  const startCreateDrag = (e: React.MouseEvent<HTMLDivElement>, dateStr: string, hr: number) => {
-    if (e.button !== 0 || e.target !== e.currentTarget) return;
+  const layoutColumn = (dStr: string) => {
+    const rangeStart = dayRange.startHour * 60;
+    const rangeEnd = dayRange.endHour * 60;
+    const items = activeTasks
+      .filter((t) => t.startTime && !t.isAllDay && isTaskDueOnDate(t, dStr))
+      .map((task) => ({
+        task,
+        start: toMin(task.startTime!),
+        dur: Math.max(MIN_DURATION, task.durationMinutes || 60),
+      }))
+      .filter((x) => x.start >= rangeStart && x.start < rangeEnd)
+      .sort((a, b) => a.start - b.start);
+
+    const laneEnds: number[] = [];
+    const placed = items.map((item) => {
+      let lane = laneEnds.findIndex((end) => end <= item.start);
+      if (lane === -1) {
+        lane = laneEnds.length;
+        laneEnds.push(item.start + item.dur);
+      } else {
+        laneEnds[lane] = item.start + item.dur;
+      }
+      return { ...item, lane };
+    });
+    return { placed, laneCount: Math.max(1, laneEnds.length) };
+  };
+
+  const startColumnDrag = (e: React.MouseEvent<HTMLDivElement>, dateStr: string) => {
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement).closest('[data-block]')) return;
     e.preventDefault();
-    const ratio = slotPointerRatio(e);
-    const startMin = hr * 60 + Math.floor((ratio * 60) / SNAP_MINUTES) * SNAP_MINUTES;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const rangeEnd = dayRange.endHour * 60;
+    const startMin = minuteAtY(e.clientY - rect.top, 'floor');
     const initial = { dateStr, startMin, endMin: startMin + SNAP_MINUTES };
     createRef.current = initial;
     setCreatePreview(initial);
 
+    let moved = false;
+    const onMove = (ev: MouseEvent) => {
+      const cur = createRef.current;
+      if (!cur) return;
+      let endMin = minuteAtY(ev.clientY - rect.top, 'ceil');
+      endMin = Math.min(endMin, rangeEnd);
+      endMin = Math.max(endMin, cur.startMin + SNAP_MINUTES);
+      if (endMin !== cur.endMin) {
+        moved = true;
+        const next = { ...cur, endMin };
+        createRef.current = next;
+        setCreatePreview(next);
+      }
+    };
     const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
       const cur = createRef.current;
       createRef.current = null;
       setCreatePreview(null);
-      if (cur && cur.endMin > cur.startMin + SNAP_MINUTES) {
+      if (moved && cur && cur.endMin > cur.startMin) {
         suppressClickRef.current = true;
         setTimeout(() => {
           suppressClickRef.current = false;
@@ -425,20 +459,19 @@ export const CalendarModule: React.FC = () => {
         setCreateTitle('');
       }
     };
+    window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
   };
 
-  const moveCreateDrag = (e: React.MouseEvent<HTMLDivElement>, dateStr: string, hr: number) => {
-    const cur = createRef.current;
-    if (!cur || cur.dateStr !== dateStr) return;
-    const ratio = slotPointerRatio(e);
-    let endMin = hr * 60 + (Math.floor((ratio * 60) / SNAP_MINUTES) + 1) * SNAP_MINUTES;
-    endMin = Math.min(endMin, dayRange.endHour * 60);
-    endMin = Math.max(endMin, cur.startMin + SNAP_MINUTES);
-    if (endMin === cur.endMin) return;
-    const next = { ...cur, endMin };
-    createRef.current = next;
-    setCreatePreview(next);
+  const handleColumnDrop = (e: React.DragEvent<HTMLDivElement>, dateStr: string) => {
+    e.preventDefault();
+    const taskId = e.dataTransfer.getData('text/plain') || draggingTaskId;
+    setDropKey(null);
+    setDraggingTaskId(null);
+    if (!taskId) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const m = minuteAtY(e.clientY - rect.top, 'floor');
+    scheduleTaskAt(taskId, dateStr, minutesToTime(m));
   };
 
   const handleCreateFromDrag = (e: React.FormEvent) => {
@@ -1005,179 +1038,153 @@ export const CalendarModule: React.FC = () => {
                         })}
                       </div>
 
-                      {/* Linhas de hora (altura muda com o zoom) */}
-                      {hours.map((hr) => {
-                        const hrPrefix = pad(hr);
-                        return (
-                          <div
-                            key={hr}
-                            style={{
-                              gridTemplateColumns: `64px repeat(${cols.length}, minmax(0, 1fr))`,
-                              minHeight: rowHeight,
-                            }}
-                            className="grid border-b border-zinc-100"
-                          >
-                            <div className="px-2 py-1 text-[10px] font-mono-num text-zinc-400 border-r border-zinc-200/80 text-right">
-                              {hrPrefix}:00
+                      {/* Corpo: cada dia é uma coluna com escala fixa (15 min = rowHeight / 4) */}
+                      <div
+                        style={{ gridTemplateColumns: `64px repeat(${cols.length}, minmax(0, 1fr))` }}
+                        className="grid"
+                      >
+                        <div className="relative border-r border-zinc-200/80" style={{ height: totalHeight }}>
+                          {hours.map((hr, i) => (
+                            <div
+                              key={hr}
+                              style={{ top: i * rowHeight + 2 }}
+                              className="absolute right-2 text-[10px] font-mono-num text-zinc-400"
+                            >
+                              {pad(hr)}:00
                             </div>
-                            {cols.map((d) => {
-                              const dStr = format(d, 'yyyy-MM-dd');
-                              const slotKey = `${dStr}-${hr}`;
-                              const slotTasks = sortDayTasks(
-                                activeTasks.filter(
-                                  (t) =>
-                                    isTaskDueOnDate(t, dStr) &&
-                                    t.startTime &&
-                                    !t.isAllDay &&
-                                    t.startTime.startsWith(hrPrefix)
-                                )
-                              );
-                              const slotEvents = externalEvents.filter(
-                                (ev) => ev.date === dStr && ev.startTime.startsWith(hrPrefix)
-                              );
+                          ))}
+                        </div>
 
-                              const maxHourlyVisible = subView === 'day' ? 6 : 2;
-                              const visibleSlotTasks = slotTasks.slice(0, maxHourlyVisible);
-                              const hiddenSlotCount = Math.max(0, slotTasks.length - visibleSlotTasks.length);
+                        {cols.map((d) => {
+                          const dStr = format(d, 'yyyy-MM-dd');
+                          const rangeStart = dayRange.startHour * 60;
+                          const rangeEnd = dayRange.endHour * 60;
+                          const { placed, laneCount } = layoutColumn(dStr);
+                          const dayEvents = externalEvents.filter((ev) => ev.date === dStr);
+                          const yOf = (m: number) => ((m - rangeStart) / 60) * rowHeight;
+                          const hOf = (dur: number) => (dur / 60) * rowHeight;
 
-                              return (
+                          return (
+                            <div
+                              key={dStr}
+                              className={`relative border-r border-zinc-100 min-w-0 cursor-pointer transition-colors ${
+                                dropKey === `col-${dStr}` ? 'bg-blue-50/50' : ''
+                              }`}
+                              style={{ height: totalHeight }}
+                              onMouseDown={(e) => startColumnDrag(e, dStr)}
+                              onClick={(e) => {
+                                if (e.target !== e.currentTarget || suppressClickRef.current) return;
+                                setQuickCellDate(dStr);
+                              }}
+                              onDragOver={(e) => handleSlotDragOver(e, `col-${dStr}`)}
+                              onDrop={(e) => handleColumnDrop(e, dStr)}
+                            >
+                              {hours.map((hr, i) => (
                                 <div
-                                  key={slotKey}
-                                  onClick={() => {
-                                    if (!suppressClickRef.current) setQuickCellDate(dStr);
-                                  }}
-                                  onMouseDown={(e) => startCreateDrag(e, dStr, hr)}
-                                  onMouseMove={(e) => moveCreateDrag(e, dStr, hr)}
-                                  onDragOver={(e) => handleSlotDragOver(e, slotKey)}
-                                  onDrop={(e) => handleSlotDrop(e, dStr, hr)}
-                                  className={`p-1 border-r border-zinc-100 space-y-1 cursor-pointer min-w-0 transition-colors ${
-                                    dropKey === slotKey
-                                      ? 'bg-blue-50 ring-1 ring-inset ring-blue-400'
-                                      : 'hover:bg-zinc-50/60'
-                                  }`}
-                                >
-                                  {createPreview &&
-                                    createPreview.dateStr === dStr &&
-                                    createPreview.startMin >= hr * 60 &&
-                                    createPreview.startMin < hr * 60 + 60 && (
+                                  key={hr}
+                                  style={{ top: i * rowHeight, height: rowHeight }}
+                                  className="absolute left-0 right-0 border-t border-zinc-100 pointer-events-none"
+                                />
+                              ))}
+
+                              {dayEvents.map((ev) => {
+                                const evStart = toMin(ev.startTime);
+                                const evEnd = toMin(ev.endTime);
+                                if (evStart < rangeStart || evStart >= rangeEnd) return null;
+                                return (
+                                  <div
+                                    key={ev.id}
+                                    data-block="event"
+                                    style={{
+                                      top: yOf(evStart),
+                                      height: Math.max(hOf(evEnd - evStart) - 2, 2),
+                                      borderLeftColor: ev.color,
+                                    }}
+                                    className="absolute left-1 right-1 z-0 overflow-hidden rounded-[4px] bg-sky-50/80 border border-sky-200/60 border-l-[3px] px-1.5 py-0.5 text-[10px] text-zinc-800 font-medium leading-tight"
+                                  >
+                                    <div className="font-mono-num text-zinc-500 truncate">
+                                      {ev.startTime} – {ev.endTime}
+                                    </div>
+                                    <div className="truncate">{ev.title}</div>
+                                  </div>
+                                );
+                              })}
+
+                              {placed.map(({ task, start, dur, lane }) => {
+                                const isResizing = resizePreview?.taskId === task.id;
+                                const shown = isResizing && resizePreview ? resizePreview.dur : dur;
+                                const accentColor = getTaskAccentColor(task);
+                                const isSelectedHere = selectedTaskId === task.id;
+                                const isDone = task.status === 'completed';
+                                const canResize = isSelectedHere && !isDone;
+
+                                return (
+                                  <div
+                                    key={task.id}
+                                    data-block="task"
+                                    {...dragProps(task.id)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedCellDate(dStr);
+                                      setSelectedTaskId(task.id);
+                                    }}
+                                    style={{
+                                      top: yOf(start),
+                                      height: Math.max(hOf(shown) - 2, 2),
+                                      left: `calc(${(lane * 100) / laneCount}% + 4px)`,
+                                      width: `calc(${100 / laneCount}% - 8px)`,
+                                      borderLeftColor: accentColor,
+                                    }}
+                                    className={`absolute z-10 overflow-hidden rounded-[4px] border border-l-[3px] px-1.5 py-0.5 text-[11px] leading-tight cursor-grab active:cursor-grabbing transition-colors ${
+                                      isSelectedHere
+                                        ? 'bg-blue-50 border-blue-300 text-blue-950 ring-1 ring-blue-500/30'
+                                        : isDone
+                                          ? 'bg-zinc-50 border-zinc-200/80 text-zinc-400'
+                                          : task.priority === 5
+                                            ? 'bg-rose-50/90 border-rose-200/70 text-rose-950'
+                                            : task.priority === 3
+                                              ? 'bg-amber-50/90 border-amber-200/70 text-amber-950'
+                                              : 'bg-zinc-50/95 hover:bg-zinc-100 border-zinc-200/80 text-zinc-800'
+                                    }`}
+                                  >
+                                    <div className="font-mono-num text-[10px] text-zinc-500 truncate">
+                                      {task.startTime} – {minutesToTime(start + shown)} · {shown}m
+                                    </div>
+                                    <div className="truncate font-semibold">{task.title}</div>
+
+                                    {canResize && (
                                       <div
-                                        style={{
-                                          minHeight: Math.max(
-                                            rowHeight - 8,
-                                            ((createPreview.endMin - createPreview.startMin) / 60) * rowHeight - 8
-                                          ),
-                                        }}
-                                        className="rounded-[4px] bg-blue-100/80 border border-blue-400 px-2 py-1 text-[10px] font-mono-num text-blue-900 pointer-events-none"
+                                        role="slider"
+                                        aria-label="Alterar duração da tarefa"
+                                        title="Arraste para aumentar ou diminuir a duração"
+                                        data-block="handle"
+                                        onMouseDown={(e) => startResize(e, task, start, rowHeight)}
+                                        onClick={(e) => e.stopPropagation()}
+                                        onDragStart={(e) => e.preventDefault()}
+                                        className="absolute left-0 right-0 bottom-0 h-3 cursor-ns-resize flex items-end justify-center"
                                       >
-                                        {minutesToTime(createPreview.startMin)} – {minutesToTime(createPreview.endMin)}
+                                        <span className="w-3 h-3 rounded-full bg-blue-600 border-2 border-white shadow mb-0.5" />
                                       </div>
                                     )}
-                                  {slotEvents.map((ev) => (
-                                    <div
-                                      key={ev.id}
-                                      style={{ borderLeftColor: ev.color }}
-                                      className="px-2 py-1 rounded-[4px] bg-sky-50/70 border border-sky-200/60 border-l-[2.5px] text-[10px] text-zinc-800 font-medium"
-                                    >
-                                      <div className="font-mono-num text-zinc-500">
-                                        {ev.startTime} – {ev.endTime}
-                                      </div>
-                                      <div className="truncate">{ev.title}</div>
-                                    </div>
-                                  ))}
-                                  {visibleSlotTasks.map((t) => {
-                                    const accentColor = getTaskAccentColor(t);
-                                    const isSelectedHere =
-                                      selectedTaskId === t.id && selectedCellDate === dStr;
-                                    const isResizing = resizePreview?.taskId === t.id;
-                                    const shownDur =
-                                      isResizing && resizePreview
-                                        ? resizePreview.dur
-                                        : t.durationMinutes || 60;
-                                    const startMin =
-                                      Number(t.startTime!.slice(0, 2)) * 60 +
-                                      Number(t.startTime!.slice(3, 5));
-                                    const canResize =
-                                      isSelectedHere && t.status !== 'completed';
+                                  </div>
+                                );
+                              })}
 
-                                    return (
-                                      <div
-                                        key={t.id}
-                                        {...dragProps(t.id)}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setSelectedCellDate(dStr);
-                                          setSelectedTaskId(t.id);
-                                        }}
-                                        style={{
-                                          borderLeftColor: accentColor,
-                                          minHeight: isResizing
-                                            ? Math.max(rowHeight - 8, (shownDur / 60) * rowHeight)
-                                            : undefined,
-                                        }}
-                                        className={`relative px-2 py-1 rounded-[4px] border border-l-[3px] text-[11px] font-medium cursor-grab active:cursor-grabbing transition-colors ${
-                                          isSelectedHere
-                                            ? 'bg-blue-50 border-blue-300 text-blue-950'
-                                            : t.priority === 5
-                                              ? 'bg-rose-50/80 border-rose-200/70 text-rose-950'
-                                              : t.priority === 3
-                                                ? 'bg-amber-50/80 border-amber-200/70 text-amber-950'
-                                                : 'bg-zinc-50/90 hover:bg-zinc-100 border-zinc-200/80 text-zinc-800'
-                                        }`}
-                                      >
-                                        <div className="flex items-center justify-between text-[10px] font-mono-num text-zinc-500">
-                                          <span>
-                                            {t.startTime}
-                                            {isResizing
-                                              ? ` – ${minutesToTime(startMin + shownDur)}`
-                                              : t.endTime
-                                                ? ` – ${t.endTime}`
-                                                : ''}
-                                          </span>
-                                          <span>{shownDur}m</span>
-                                        </div>
-                                        <div className="truncate font-semibold flex items-center justify-between gap-1">
-                                          <span className="truncate">{t.title}</span>
-                                          {t.recurrenceRule && (
-                                            <Repeat className="w-2.5 h-2.5 shrink-0 text-zinc-400" />
-                                          )}
-                                        </div>
-
-                                        {/* Bolinha para alterar a duração */}
-                                        {canResize && (
-                                          <div
-                                            role="slider"
-                                            aria-label="Alterar duração da tarefa"
-                                            title="Arraste para aumentar ou diminuir a duração"
-                                            onMouseDown={(e) =>
-                                              startResize(e, t, startMin, rowHeight)
-                                            }
-                                            onClick={(e) => e.stopPropagation()}
-                                            onDragStart={(e) => e.preventDefault()}
-                                            className="absolute left-1/2 -translate-x-1/2 -bottom-1.5 w-3.5 h-3.5 rounded-full bg-blue-600 border-2 border-white shadow cursor-ns-resize z-10"
-                                          />
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-
-                                  {hiddenSlotCount > 0 && (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setExpandedDayDate(dStr);
-                                      }}
-                                      className="w-full h-[19px] px-1.5 rounded-[4px] bg-zinc-100 hover:bg-zinc-200 text-[10px] font-mono-num font-semibold text-zinc-600 text-left"
-                                    >
-                                      +{hiddenSlotCount} more in this hour
-                                    </button>
-                                  )}
+                              {createPreview && createPreview.dateStr === dStr && (
+                                <div
+                                  style={{
+                                    top: yOf(createPreview.startMin),
+                                    height: Math.max(hOf(createPreview.endMin - createPreview.startMin) - 2, 2),
+                                  }}
+                                  className="absolute left-1 right-1 z-20 pointer-events-none overflow-hidden rounded-[4px] bg-blue-100/80 border border-blue-400 px-1.5 text-[10px] font-mono-num text-blue-900 leading-tight"
+                                >
+                                  {minutesToTime(createPreview.startMin)} – {minutesToTime(createPreview.endMin)}
                                 </div>
-                              );
-                            })}
-                          </div>
-                        );
-                      })}
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </>
                   );
                 })()}
