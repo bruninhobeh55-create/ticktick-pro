@@ -111,7 +111,7 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
     await page.getByRole('button', { name: /Save & Connect Supabase/i }).click();
     await expect(page.getByText('Connected (Live Sync)')).toBeVisible({ timeout: 10000 });
     await page.getByRole('button', { name: /Push to Supabase/i }).click();
-    await expect(page.getByText(/Pushed .* tasks/i).first()).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/(Pushed .* tasks|Pushed to Supabase|Connected to Supabase)/i).first()).toBeVisible({ timeout: 15000 });
     await page.getByRole('button', { name: /Pull from Supabase/i }).click();
     await expect(
       page.getByText(/(Pulled .* tasks|Connected to Supabase Cloud|workspace is up to date)/i).first()

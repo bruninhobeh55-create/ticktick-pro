@@ -936,8 +936,8 @@ export const TaskSidebar: React.FC = () => {
                   task
                 </div>
               ) : tagLayout === 'horizontal' ? (
-                /* Horizontal Wrap Pills Cloud */
-                <div className="flex flex-wrap gap-1.5 px-0.5 py-1">
+                /* Horizontal Rectangle Cells Cloud */
+                <div className="flex flex-wrap gap-1 px-0.5 py-1">
                   {tags.map((tag) => {
                     const isSelected =
                       sidebarSelection.kind === 'tag' && sidebarSelection.id === tag.name;
@@ -948,17 +948,17 @@ export const TaskSidebar: React.FC = () => {
                           onClick={() =>
                             handleSelectAndCloseOnMobile({ kind: 'tag', id: tag.name })
                           }
-                          className={`group flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full text-xs cursor-pointer border transition-all ${
+                          className={`group flex items-center gap-1.5 px-2 py-0.5 rounded-[5px] text-[11px] font-medium cursor-pointer border transition-all ${
                             isSelected
-                              ? 'bg-zinc-900 text-white border-zinc-900 font-semibold shadow-xs'
-                              : 'bg-white hover:bg-zinc-100 text-zinc-700 border-zinc-200/90 shadow-2xs hover:border-zinc-300'
+                              ? 'bg-zinc-900 text-white border-zinc-900 shadow-2xs'
+                              : 'bg-white hover:bg-zinc-50 text-zinc-700 border-zinc-200/90 shadow-2xs hover:border-zinc-300'
                           }`}
                         >
                           <span
-                            className="w-2 h-2 rounded-full shrink-0"
+                            className="w-1.5 h-1.5 rounded-full shrink-0"
                             style={{ backgroundColor: tag.color }}
                           />
-                          <span className="truncate max-w-[120px]">#{tag.name}</span>
+                          <span className="truncate max-w-[110px]">#{tag.name}</span>
 
                           <button
                             type="button"
@@ -968,13 +968,13 @@ export const TaskSidebar: React.FC = () => {
                             }}
                             title={`Tag options for #${tag.name}`}
                             aria-label={`Tag options ${tag.name}`}
-                            className={`p-0.5 rounded-full hover:bg-black/10 transition-colors ${
+                            className={`p-0.5 rounded hover:bg-black/10 transition-colors ${
                               isSelected
                                 ? 'text-zinc-300 hover:text-white'
                                 : 'text-zinc-400 hover:text-zinc-800'
                             }`}
                           >
-                            <MoreHorizontal className="w-3 h-3" strokeWidth={1.75} />
+                            <MoreHorizontal className="w-2.5 h-2.5" strokeWidth={1.75} />
                           </button>
                         </div>
 

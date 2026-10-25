@@ -107,6 +107,7 @@ export const TaskDetailPane: React.FC = () => {
   const [isResizing, setIsResizing] = useState(false);
   const [isSubtasksCompletedCollapsed, setIsSubtasksCompletedCollapsed] = useState(false);
   const [showFocusMenu, setShowFocusMenu] = useState(false);
+  const [showPriorityMenu, setShowPriorityMenu] = useState(false);
   const [draft, setDraft] = useState<TaskDraft | null>(null);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [isSavedNotice, setIsSavedNotice] = useState(false);
@@ -277,9 +278,9 @@ export const TaskDetailPane: React.FC = () => {
           />
         </div>
 
-        {/* Header: Status, List, Priority, Save button & Close button */}
-        <div className="min-h-12 px-3 sm:px-4 border-b border-zinc-200/80 flex items-center justify-between gap-1.5 shrink-0 bg-white">
-          <div className="flex items-center gap-2 min-w-0">
+        {/* Header: Status, List, Priority, Save button & Close button (No overlapping) */}
+        <div className="min-h-12 px-3 border-b border-zinc-200/80 flex items-center justify-between gap-1.5 shrink-0 bg-white overflow-hidden">
+          <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
             {/* Status Checkbox */}
             <button
               type="button"
@@ -294,7 +295,7 @@ export const TaskDetailPane: React.FC = () => {
               {isDone && <Check className="w-2.5 h-2.5 stroke-[2.75] animate-check" />}
             </button>
 
-            {/* List Selector */}
+            {/* List Selector with safe shrink and truncation */}
             <select
               aria-label="Task List"
               value={currentDraft.listId}
@@ -304,7 +305,7 @@ export const TaskDetailPane: React.FC = () => {
                   listId: e.target.value,
                 }))
               }
-              className="text-xs font-medium text-zinc-700 bg-zinc-100 px-2 py-1 rounded-md border border-zinc-200/70 focus:outline-none max-w-[105px] sm:max-w-[140px] truncate"
+              className="text-xs font-medium text-zinc-700 bg-zinc-100 px-2 py-1 rounded-md border border-zinc-200/70 focus:outline-none min-w-0 max-w-[130px] flex-shrink truncate cursor-pointer hover:bg-zinc-200/60 transition-colors"
             >
               <option value="inbox">Inbox</option>
               {lists.map((l) => (
@@ -315,67 +316,87 @@ export const TaskDetailPane: React.FC = () => {
             </select>
           </div>
 
-          {/* Right Side: Priority Selector + Save Button + Close Button */}
+          {/* Right Side: Compact Priority Selector + Save Button + Close Button (Never overlaps) */}
           <div className="flex items-center gap-1 shrink-0">
-            {/* Mobile: Compact Priority Dropdown */}
-            <select
-              aria-label="Task Priority"
-              value={currentDraft.priority}
-              onChange={(e) =>
-                setDraft((d) => ({
-                  ...(d || getInitialDraft(task)),
-                  priority: Number(e.target.value) as Priority,
-                }))
-              }
-              className={`sm:hidden text-xs font-semibold px-1.5 py-1 rounded-md border text-center ${
-                currentDraft.priority === 5
-                  ? 'bg-rose-50 border-rose-200 text-rose-700'
-                  : currentDraft.priority === 3
-                    ? 'bg-amber-50 border-amber-200 text-amber-700'
-                    : currentDraft.priority === 1
-                      ? 'bg-blue-50 border-blue-200 text-blue-700'
-                      : 'bg-zinc-50 border-zinc-200 text-zinc-600'
-              }`}
-            >
-              <option value={5}>P5</option>
-              <option value={3}>P3</option>
-              <option value={1}>P1</option>
-              <option value={0}>P0</option>
-            </select>
-
-            {/* Tablet / Desktop: 4 Flag Buttons */}
-            <div className="hidden sm:flex items-center gap-0.5">
-              {([5, 3, 1, 0] as Priority[]).map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() =>
-                    setDraft((d) => ({
-                      ...(d || getInitialDraft(task)),
-                      priority: p,
-                    }))
-                  }
-                  title={`Priority ${p}`}
-                  className={`p-1.5 rounded-md ${
-                    currentDraft.priority === p
-                      ? 'bg-zinc-100 font-semibold ring-1 ring-zinc-300'
-                      : 'opacity-45 hover:opacity-100'
+            {/* Priority Selector with dropdown menu */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowPriorityMenu((prev) => !prev)}
+                title={`Priority: ${
+                  currentDraft.priority === 5
+                    ? 'High'
+                    : currentDraft.priority === 3
+                      ? 'Medium'
+                      : currentDraft.priority === 1
+                        ? 'Low'
+                        : 'None'
+                }`}
+                aria-label="Task Priority"
+                className={`flex items-center gap-1 px-1.5 py-1 rounded-md text-xs font-semibold border transition-all ${
+                  currentDraft.priority === 5
+                    ? 'bg-rose-50 border-rose-200 text-rose-700'
+                    : currentDraft.priority === 3
+                      ? 'bg-amber-50 border-amber-200 text-amber-700'
+                      : currentDraft.priority === 1
+                        ? 'bg-blue-50 border-blue-200 text-blue-700'
+                        : 'bg-zinc-50 border-zinc-200 text-zinc-500 hover:text-zinc-800'
+                }`}
+              >
+                <Flag
+                  strokeWidth={1.75}
+                  className={`w-3.5 h-3.5 ${
+                    currentDraft.priority === 5
+                      ? 'text-rose-500 fill-rose-500'
+                      : currentDraft.priority === 3
+                        ? 'text-amber-500 fill-amber-500'
+                        : currentDraft.priority === 1
+                          ? 'text-blue-500 fill-blue-500'
+                          : 'text-zinc-400'
                   }`}
-                >
-                  <Flag
-                    strokeWidth={1.75}
-                    className={`w-3.5 h-3.5 ${
-                      p === 5
-                        ? 'text-rose-500 fill-rose-500'
-                        : p === 3
-                          ? 'text-amber-500 fill-amber-500'
-                          : p === 1
-                            ? 'text-blue-500 fill-blue-500'
-                            : 'text-zinc-400'
-                    }`}
+                />
+                <span className="font-mono-num text-[11px]">P{currentDraft.priority}</span>
+                <ChevronDown className="w-2.5 h-2.5 opacity-60" />
+              </button>
+
+              {showPriorityMenu && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setShowPriorityMenu(false)}
                   />
-                </button>
-              ))}
+                  <div className="absolute right-0 top-full mt-1 z-50 w-36 surface-floating rounded-xl p-1 shadow-xl border border-zinc-200/90 space-y-0.5 animate-popover">
+                    {(
+                      [
+                        { p: 5, label: 'High Priority', color: 'text-rose-500 fill-rose-500' },
+                        { p: 3, label: 'Medium', color: 'text-amber-500 fill-amber-500' },
+                        { p: 1, label: 'Low Priority', color: 'text-blue-500 fill-blue-500' },
+                        { p: 0, label: 'No Priority', color: 'text-zinc-400' },
+                      ] as const
+                    ).map(({ p, label, color }) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => {
+                          setDraft((d) => ({
+                            ...(d || getInitialDraft(task)),
+                            priority: p,
+                          }));
+                          setShowPriorityMenu(false);
+                        }}
+                        className={`w-full text-left px-2 py-1.5 rounded-lg text-xs flex items-center gap-2 ${
+                          currentDraft.priority === p
+                            ? 'bg-zinc-100 font-semibold text-zinc-900'
+                            : 'text-zinc-700 hover:bg-zinc-50'
+                        }`}
+                      >
+                        <Flag className={`w-3.5 h-3.5 ${color}`} strokeWidth={1.75} />
+                        <span>{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Prominent Save Button */}
@@ -391,7 +412,7 @@ export const TaskDetailPane: React.FC = () => {
                     : 'No unsaved changes'
               }
               aria-label="Save Task Changes"
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition-all shrink-0 ${
                 isSavedNotice
                   ? 'bg-emerald-600 text-white shadow-2xs'
                   : isDirty
@@ -421,7 +442,7 @@ export const TaskDetailPane: React.FC = () => {
               onClick={() => setSelectedTaskId(null)}
               title="Close Detail Pane (Esc)"
               aria-label="Close Detail Pane"
-              className="p-1.5 rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 bg-zinc-50 border border-zinc-200/80 ml-0.5"
+              className="p-1.5 rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 bg-zinc-50 border border-zinc-200/80 ml-0.5 shrink-0"
             >
               <X className="w-4 h-4" strokeWidth={1.75} />
             </button>
