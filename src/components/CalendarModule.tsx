@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   addDays,
   addMonths,
@@ -117,7 +117,9 @@ export const CalendarModule: React.FC = () => {
     toggleCalendarSubscription,
   } = useApp();
 
-  const [subView, setSubView] = useState<CalendarSubView>('month');
+  const [subView, setSubView] = useState<CalendarSubView>(() =>
+    typeof window !== 'undefined' && window.innerWidth < 640 ? 'multiday' : 'month'
+  );
   const [cursorDate, setCursorDate] = useState<Date>(startOfToday());
   const [showUnscheduledDrawer, setShowUnscheduledDrawer] = useState<boolean>(() => {
     if (typeof window !== 'undefined' && window.innerWidth < 1024) return false;
@@ -133,6 +135,14 @@ export const CalendarModule: React.FC = () => {
   const pressTimerRef = useRef<number | null>(null);
   const pressStartRef = useRef<{ x: number; y: number } | null>(null);
   const suppressBlockClickRef = useRef(false);
+  // Pinça: ponteiros ativos e estado do gesto de zoom
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchRef = useRef<{ dist0: number; zoom0: number; anchor: number; mid: number } | null>(null);
+  const pendingScrollRef = useRef<number | null>(null);
+  const cancelInteractionsRef = useRef<() => void>(() => {});
+  // Auto-scroll durante o arraste de tarefa perto das bordas
+  const autoScrollRef = useRef<number | null>(null);
+  const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
   // Preview de onde a tarefa vai cair ao soltar (mouse arrasta direto; toque depois de segurar)
   type MovePreview = { taskId: string; dayStr: string; startMin: number; dur: number };
   const [movePreview, setMovePreview] = useState<MovePreview | null>(null);
@@ -146,6 +156,8 @@ export const CalendarModule: React.FC = () => {
 
   const [dayRange, setDayRange] = useState<DayRange>(() => loadDayRange());
   const [zoom, setZoom] = useState<number>(1);
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
   const [dropKey, setDropKey] = useState<string | null>(null);
   const [resizePreview, setResizePreview] = useState<{ taskId: string; dur: number } | null>(null);
@@ -432,20 +444,17 @@ export const CalendarModule: React.FC = () => {
     setMovePreview(p);
   };
 
-  const onMoveGesture = (ev: PointerEvent) => {
+  // Calcula o destino (dia e horário) do bloco na posição atual do ponteiro
+  const computeMoveAt = (x: number, y: number) => {
     const g = moveGestureRef.current;
-    if (!g) return;
-    if (!g.moved) {
-      if (Math.hypot(ev.clientX - g.x0, ev.clientY - g.y0) < 5) return;
-      g.moved = true;
-    }
-    const colEl = (document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null)?.closest<HTMLElement>('[data-day-col]');
+    if (!g || !g.moved) return;
+    const colEl = (document.elementFromPoint(x, y) as HTMLElement | null)?.closest<HTMLElement>('[data-day-col]');
     if (!colEl) {
       setMovePreviewBoth(null);
       return;
     }
     const dayStr = colEl.dataset.dayCol ?? '';
-    const raw = minuteAtY(ev.clientY - colEl.getBoundingClientRect().top, 'floor') - g.grab;
+    const raw = minuteAtY(y - colEl.getBoundingClientRect().top, 'floor') - g.grab;
     const startMin = Math.min(
       Math.max(Math.round(raw / SNAP_MINUTES) * SNAP_MINUTES, dayRange.startHour * 60),
       dayRange.endHour * 60 - g.dur
@@ -453,7 +462,50 @@ export const CalendarModule: React.FC = () => {
     setMovePreviewBoth({ taskId: g.taskId, dayStr, startMin, dur: g.dur });
   };
 
+  const AUTO_SCROLL_EDGE = 56;
+  const stopAutoScroll = () => {
+    if (autoScrollRef.current !== null) cancelAnimationFrame(autoScrollRef.current);
+    autoScrollRef.current = null;
+  };
+
+  // Rola a grade quando o dedo/mouse fica perto de uma borda durante o arraste
+  const runAutoScroll = () => {
+    const el = gridRef.current;
+    const p = lastPointerRef.current;
+    if (!el || !p || !moveGestureRef.current?.moved) {
+      autoScrollRef.current = null;
+      return;
+    }
+    const r = el.getBoundingClientRect();
+    let dy = 0;
+    let dx = 0;
+    if (p.y < r.top + AUTO_SCROLL_EDGE) dy = -Math.ceil((r.top + AUTO_SCROLL_EDGE - p.y) / 6);
+    else if (p.y > r.bottom - AUTO_SCROLL_EDGE) dy = Math.ceil((p.y - (r.bottom - AUTO_SCROLL_EDGE)) / 6);
+    if (p.x < r.left + AUTO_SCROLL_EDGE) dx = -Math.ceil((r.left + AUTO_SCROLL_EDGE - p.x) / 6);
+    else if (p.x > r.right - AUTO_SCROLL_EDGE) dx = Math.ceil((p.x - (r.right - AUTO_SCROLL_EDGE)) / 6);
+    if (dy !== 0 || dx !== 0) {
+      el.scrollTop += dy;
+      el.scrollLeft += dx;
+      computeMoveAt(p.x, p.y);
+    }
+    autoScrollRef.current = requestAnimationFrame(runAutoScroll);
+  };
+
+  const onMoveGesture = (ev: PointerEvent) => {
+    const g = moveGestureRef.current;
+    if (!g) return;
+    if (!g.moved) {
+      if (Math.hypot(ev.clientX - g.x0, ev.clientY - g.y0) < 5) return;
+      g.moved = true;
+    }
+    lastPointerRef.current = { x: ev.clientX, y: ev.clientY };
+    if (autoScrollRef.current === null) autoScrollRef.current = requestAnimationFrame(runAutoScroll);
+    computeMoveAt(ev.clientX, ev.clientY);
+  };
+
   const onUpGesture = () => {
+    stopAutoScroll();
+    lastPointerRef.current = null;
     const g = moveGestureRef.current;
     const p = movePreviewRef.current;
     moveGestureRef.current = null;
@@ -470,6 +522,87 @@ export const CalendarModule: React.FC = () => {
     setArmedTaskId(null);
   };
 
+  // Cancela arraste/redimensionamento/criação em andamento (usado quando entra a pinça)
+  cancelInteractionsRef.current = () => {
+    cancelPress();
+    gestureCleanupRef.current?.();
+    stopAutoScroll();
+    moveGestureRef.current = null;
+    setMovePreviewBoth(null);
+    setArmedTaskId(null);
+    resizeRef.current = null;
+    setResizePreview(null);
+    createRef.current = null;
+    setCreatePreview(null);
+  };
+
+  // Pinça com dois dedos na grade: muda o zoom mantendo o horário sob os dedos
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const pts = pointersRef.current;
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size !== 2) return;
+      cancelInteractionsRef.current();
+      const [a, b] = [...pts.values()];
+      const rect = el.getBoundingClientRect();
+      pinchRef.current = {
+        dist0: Math.max(Math.hypot(a.x - b.x, a.y - b.y), 1),
+        zoom0: zoomRef.current,
+        anchor: el.scrollTop + ((a.y + b.y) / 2 - rect.top),
+        mid: (a.y + b.y) / 2 - rect.top,
+      };
+    };
+    const onMove = (e: PointerEvent) => {
+      if (!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const p = pinchRef.current;
+      if (!p || pts.size < 2) return;
+      const [a, b] = [...pts.values()];
+      const rect = el.getBoundingClientRect();
+      const mid = (a.y + b.y) / 2 - rect.top;
+      const dist = Math.hypot(a.x - b.x, a.y - b.y);
+      const nextZoom = Math.min(2.5, Math.max(0.5, Math.round(p.zoom0 * (dist / p.dist0) * 10) / 10));
+      if (nextZoom !== zoomRef.current) {
+        pendingScrollRef.current = Math.max(0, p.anchor * (nextZoom / p.zoom0) - mid);
+        setZoom(nextZoom);
+      }
+    };
+    const onUp = (e: PointerEvent) => {
+      pts.delete(e.pointerId);
+      if (pts.size < 2) pinchRef.current = null;
+    };
+    el.addEventListener('pointerdown', onDown, { capture: true });
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    return () => {
+      el.removeEventListener('pointerdown', onDown, { capture: true });
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+  }, []);
+
+  // O navegador decide se um toque rola a página no início do toque; como a tarefa só fica ativa
+  // depois de segurar, bloqueamos o movimento padrão enquanto ela estiver ativa ou com pinça.
+  useEffect(() => {
+    const onTouchMove = (e: TouchEvent) => {
+      if (moveGestureRef.current || pinchRef.current || armedTaskId) e.preventDefault();
+    };
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => window.removeEventListener('touchmove', onTouchMove);
+  }, [armedTaskId]);
+
+  useLayoutEffect(() => {
+    if (pendingScrollRef.current !== null && gridRef.current) {
+      gridRef.current.scrollTop = pendingScrollRef.current;
+      pendingScrollRef.current = null;
+    }
+  }, [zoom]);
+
   const startMoveGesture = (taskId: string, grab: number, x0: number, y0: number) => {
     const t = tasks.find((x) => x.id === taskId);
     if (!t) return;
@@ -479,7 +612,7 @@ export const CalendarModule: React.FC = () => {
 
   // Mouse: arrasta direto. Toque: só depois de pressionar e segurar (o bloco fica ativo).
   const handleBlockPointerDown = (e: React.PointerEvent<HTMLDivElement>, task: Task, startMinute: number) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || pointersRef.current.size > 1) return;
     const colEl = e.currentTarget.closest<HTMLElement>('[data-day-col]');
     // Onde dentro do bloco o usuário pegou: mantém esse ponto ao soltar
     const grab = colEl ? minuteAtY(e.clientY - colEl.getBoundingClientRect().top, 'floor') - startMinute : 0;
@@ -491,6 +624,7 @@ export const CalendarModule: React.FC = () => {
       pressStartRef.current = { x: x0, y: y0 };
       pressTimerRef.current = window.setTimeout(() => {
         pressTimerRef.current = null;
+        if (pointersRef.current.size > 1) return;
         suppressBlockClickRef.current = true;
         setArmedTaskId(task.id);
         if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate(10);
@@ -889,7 +1023,7 @@ export const CalendarModule: React.FC = () => {
 
         {/* Corpo do calendário + gaveta de tarefas não agendadas */}
         <div className="flex-1 flex min-h-0 overflow-hidden">
-          <div ref={gridRef} className="flex-1 overflow-y-auto">
+          <div ref={gridRef} className="flex-1 overflow-y-auto" style={{ touchAction: 'pan-x pan-y', overscrollBehavior: 'contain' }}>
             {subView === 'month' && (
               <div className="flex flex-col h-full min-h-[620px]">
                 <div className="grid grid-cols-7 border-b border-zinc-200/80 bg-zinc-50/80 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
