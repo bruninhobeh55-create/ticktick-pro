@@ -5,7 +5,11 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   base: './',
   plugins: [react(), tailwindcss()],
+  build: {
+    chunkSizeWarningLimit: 800,
+  },
   test: {
+    environment: 'jsdom',
     exclude: ['**/node_modules/**', '**/dist/**', '**/e2e/**'],
   },
-} as Parameters<typeof defineConfig>[0]);
+} as unknown as Parameters<typeof defineConfig>[0]);

@@ -115,15 +115,16 @@ export const SettingsAndSupabaseModal: React.FC = () => {
         <div className="flex border-b border-zinc-200/80 bg-zinc-50 px-3 sm:px-6 gap-2 overflow-x-auto no-scrollbar">
           {(
             [
-              ['general', 'General', <Settings className="w-3.5 h-3.5" strokeWidth={1.75} />],
-              ['themes', 'Themes', <Palette className="w-3.5 h-3.5" strokeWidth={1.75} />],
-              ['supabase', 'Supabase Backend', <Database className="w-3.5 h-3.5" strokeWidth={1.75} />],
-              ['shortcuts', 'Shortcuts', <Keyboard className="w-3.5 h-3.5" strokeWidth={1.75} />],
-              ['premium', 'TickTick Premium', <Crown className="w-3.5 h-3.5 text-amber-500" strokeWidth={1.75} />],
+              { id: 'general', label: 'General', Icon: Settings },
+              { id: 'themes', label: 'Themes', Icon: Palette },
+              { id: 'supabase', label: 'Supabase Backend', Icon: Database },
+              { id: 'shortcuts', label: 'Shortcuts', Icon: Keyboard },
+              { id: 'premium', label: 'TickTick Premium', Icon: Crown },
             ] as const
-          ).map(([tabId, label, icon]) => (
+          ).map(({ id: tabId, label, Icon }) => (
             <button
               key={tabId}
+              type="button"
               onClick={() => openSettingsTab(tabId)}
               className={`py-3 px-3 text-xs font-semibold border-b-2 flex items-center gap-1.5 whitespace-nowrap ${
                 settingsInitialTab === tabId
@@ -131,7 +132,10 @@ export const SettingsAndSupabaseModal: React.FC = () => {
                   : 'border-transparent text-zinc-500 hover:text-zinc-800'
               }`}
             >
-              {icon}
+              <Icon
+                className={`w-3.5 h-3.5 ${tabId === 'premium' ? 'text-amber-500' : ''}`}
+                strokeWidth={1.75}
+              />
               {label}
             </button>
           ))}

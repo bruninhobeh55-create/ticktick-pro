@@ -2200,6 +2200,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       syncWorkspaceToSupabase,
       pullWorkspaceFromSupabase,
     }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       activeModule,
       sidebarSelection,
