@@ -155,7 +155,7 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
       await desktopRail.locator('button[aria-label="Eisenhower Matrix"]').click();
       await expect(page.getByText('Urgent & Important').first()).toBeVisible();
       await expect(page.getByText('Not Urgent & Important').first()).toBeVisible();
-      const q1Input = page.locator('input[placeholder*="+ Add to Urgent & Important"]');
+      const q1Input = page.locator('input[placeholder*="Add to Urgent & Important"]');
       await q1Input.fill('Inspect Matrix Popover Task');
       await q1Input.press('Enter');
       await page.getByText('Inspect Matrix Popover Task').first().click();

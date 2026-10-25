@@ -181,6 +181,7 @@ export const EisenhowerMatrixModule: React.FC = () => {
   const [mobileQuadrantFilter, setMobileQuadrantFilter] = useState<
     'all' | 'q1' | 'q2' | 'q3' | 'q4'
   >('all');
+  const [collapsedQuadrants, setCollapsedQuadrants] = useState<Record<string, boolean>>({});
 
   // Modals & Menu Popovers
   const [showTopMoreMenu, setShowTopMoreMenu] = useState(false);
@@ -659,68 +660,79 @@ export const EisenhowerMatrixModule: React.FC = () => {
           </div>
         </div>
 
-        {/* Mobile Interactive 2x2 Matrix Navigator & Focus Switcher (Taste Skill App Screen) */}
-        <div className="md:hidden mb-3 bg-white rounded-2xl border border-zinc-200/90 p-2.5 shadow-2xs shrink-0">
-          <div className="flex items-center justify-between px-1 pb-2 mb-2 border-b border-zinc-100">
-            <span className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider">
-              Quadrant Navigator
-            </span>
-            <button
-              type="button"
-              onClick={() => setMobileQuadrantFilter('all')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
+        {/* Mobile Segmented Quadrant Tabs (Taste Skill: single-row chip rail, keeps first task in top 35% of phone screen) */}
+        <div className="md:hidden mb-3 -mx-1 px-1 flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0 py-0.5">
+          <button
+            type="button"
+            onClick={() => setMobileQuadrantFilter('all')}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold shrink-0 transition-all flex items-center gap-1.5 ${
+              mobileQuadrantFilter === 'all'
+                ? 'bg-zinc-900 text-white shadow-xs'
+                : 'bg-white text-zinc-600 border border-zinc-200/90 hover:bg-zinc-50'
+            }`}
+          >
+            <span>All Quadrants</span>
+            <span
+              className={`font-mono-num text-[11px] px-1.5 py-0.2 rounded-full ${
                 mobileQuadrantFilter === 'all'
-                  ? 'bg-zinc-900 text-white'
-                  : 'text-zinc-600 bg-zinc-100 hover:bg-zinc-200'
+                  ? 'bg-white/20 text-white'
+                  : 'bg-zinc-100 text-zinc-500'
               }`}
             >
-              View All (4)
-            </button>
-          </div>
+              {matrixTasks.filter((t) => t.status !== 'completed').length}
+            </span>
+          </button>
 
-          <div className="grid grid-cols-2 gap-2">
-            {quadrantConfigs.map((q) => {
-              const count = matrixTasks.filter(
-                (t) => resolveTaskQuadrant(t) === q.id && t.status !== 'completed'
-              ).length;
-              const isSelected = mobileQuadrantFilter === q.id;
-              return (
-                <button
-                  key={q.id}
-                  type="button"
-                  onClick={() => setMobileQuadrantFilter(q.id)}
-                  className={`p-2.5 rounded-xl border text-left transition-all ${
+          {quadrantConfigs.map((q) => {
+            const count = matrixTasks.filter(
+              (t) => resolveTaskQuadrant(t) === q.id && t.status !== 'completed'
+            ).length;
+            const isSelected = mobileQuadrantFilter === q.id;
+            const shortName =
+              q.id === 'q1'
+                ? 'Do First'
+                : q.id === 'q2'
+                  ? 'Schedule'
+                  : q.id === 'q3'
+                    ? 'Delegate'
+                    : "Don't Do";
+
+            return (
+              <button
+                key={q.id}
+                type="button"
+                onClick={() => setMobileQuadrantFilter(q.id)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium shrink-0 transition-all flex items-center gap-1.5 ${
+                  isSelected
+                    ? `${q.borderColor} bg-white ring-2 ring-zinc-900/15 shadow-xs text-zinc-900 font-semibold`
+                    : 'bg-white text-zinc-600 border border-zinc-200/90 hover:bg-zinc-50'
+                }`}
+              >
+                <span className={`text-xs font-bold ${q.titleColor}`}>{q.circleNumber}</span>
+                <span>{shortName}</span>
+                <span
+                  className={`font-mono-num text-[11px] px-1.5 py-0.2 rounded-full ${
                     isSelected
-                      ? `${q.borderColor} bg-zinc-50 ring-2 ring-zinc-900/15 shadow-2xs`
-                      : 'border-zinc-200/80 hover:border-zinc-300 bg-white'
+                      ? 'bg-zinc-100 text-zinc-800 font-semibold'
+                      : 'bg-zinc-100 text-zinc-400'
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className={`text-xs font-bold ${q.titleColor}`}>{q.circleNumber}</span>
-                    <span className="font-mono-num text-[11px] font-bold text-zinc-700 bg-zinc-100 px-1.5 py-0.5 rounded-full">
-                      {count}
-                    </span>
-                  </div>
-                  <div className="text-[11.5px] font-bold text-zinc-800 truncate mt-1">
-                    {q.title.split('&')[0].trim()}
-                  </div>
-                  <div className="text-[10px] text-zinc-500 font-medium truncate">
-                    {q.id === 'q1' ? 'Do First' : q.id === 'q2' ? 'Schedule' : q.id === 'q3' ? 'Delegate' : "Don't Do"}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
-        {/* 2x2 Quadrants Grid (Desktop: 2x2, Mobile: Focused or Stacked) */}
-        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3.5 min-h-[400px] md:min-h-[560px]">
+        {/* 2x2 Quadrants Grid (Desktop: 2x2, Mobile: Natural-height Feed or Focused Single Quadrant) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 md:flex-1 md:min-h-[560px] pb-8 md:pb-0">
           {quadrantConfigs.map((q) => {
             const qAllTasks = matrixTasks.filter((t) => resolveTaskQuadrant(t) === q.id);
             const qActiveTasks = qAllTasks.filter((t) => t.status !== 'completed');
             const qCompletedTasks = qAllTasks.filter((t) => t.status === 'completed');
             const isHiddenOnMobile =
               mobileQuadrantFilter !== 'all' && mobileQuadrantFilter !== q.id;
+            const isCollapsedByHeader = Boolean(collapsedQuadrants[q.id]);
             const groupedSections = groupQuadrantTasks(qAllTasks, q.id);
             const isQuickAddActive = activeQuickAddQId === q.id;
             const isQuadrantMenuOpen = activeQuadrantMenuQId === q.id;
@@ -730,21 +742,44 @@ export const EisenhowerMatrixModule: React.FC = () => {
                 key={q.id}
                 className={`${
                   isHiddenOnMobile ? 'hidden md:flex' : 'flex'
-                } relative bg-white rounded-2xl md:rounded-xl border border-zinc-200 shadow-2xs flex-col overflow-hidden transition-all`}
+                } relative bg-white rounded-2xl md:rounded-xl border border-zinc-200/90 shadow-2xs flex-col overflow-hidden transition-all ${
+                  mobileQuadrantFilter !== 'all' ? 'min-h-[380px] flex-1' : 'h-auto'
+                } md:h-full`}
               >
                 {/* Quadrant Header */}
-                <div className="px-3.5 py-2.5 border-b border-zinc-100 flex items-center justify-between shrink-0 bg-zinc-50/50">
-                  <div className="flex items-center gap-2">
-                    <span className={`text-base font-bold leading-none ${q.titleColor}`}>
+                <div className="px-3.5 py-2.5 border-b border-zinc-100 flex items-center justify-between shrink-0 bg-zinc-50/60">
+                  <div
+                    onClick={() => {
+                      if (window.innerWidth < 768) {
+                        setCollapsedQuadrants((prev) => ({
+                          ...prev,
+                          [q.id]: !prev[q.id],
+                        }));
+                      }
+                    }}
+                    className="flex items-center gap-2 cursor-pointer md:cursor-default select-none min-w-0"
+                  >
+                    <span className={`text-base font-bold leading-none shrink-0 ${q.titleColor}`}>
                       {q.circleNumber}
                     </span>
-                    <h2 className={`text-xs font-bold tracking-tight ${q.titleColor}`}>
-                      {q.title}
-                    </h2>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h2 className={`text-xs font-bold tracking-tight truncate ${q.titleColor}`}>
+                          {q.title}
+                        </h2>
+                        <span className="text-[10px] text-zinc-400 font-medium hidden xs:inline">
+                          · {q.id === 'q1' ? 'Do First' : q.id === 'q2' ? 'Schedule' : q.id === 'q3' ? 'Delegate' : "Don't Do"}
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Actions on Quadrant Header: [+] and [...] */}
-                  <div className="flex items-center gap-1 text-zinc-400">
+                  {/* Actions on Quadrant Header: count pill, [+], and [...] */}
+                  <div className="flex items-center gap-1 text-zinc-400 shrink-0">
+                    <span className="font-mono-num text-[11px] font-semibold text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded-full mr-1">
+                      {qActiveTasks.length}
+                    </span>
+
                     <button
                       type="button"
                       onClick={() => handleOpenQuickAddCard(q.id)}
@@ -1240,113 +1275,120 @@ export const EisenhowerMatrixModule: React.FC = () => {
                   </>
                 )}
 
-                {/* Quadrant Body: Grouped Tasks */}
-                <div className="flex-1 p-2 sm:p-3 space-y-2 overflow-y-auto">
-                  {qActiveTasks.length === 0 && qCompletedTasks.length === 0 ? (
-                    <div className="h-full min-h-[140px] flex items-center justify-center text-xs text-zinc-400 font-medium select-none">
-                      No Tasks
-                    </div>
-                  ) : (
-                    <>
-                      {groupedSections.map((group) => {
-                        const isCollapsed = collapsedGroups[`${q.id}-${group.groupKey}`];
-                        return (
-                          <div key={group.groupKey} className="space-y-0.5">
-                            {group.title && (
+                {/* Quadrant Body & Quick-Add: Hidden when collapsed by mobile header */}
+                {!isCollapsedByHeader && (
+                  <>
+                    <div className="p-2.5 sm:p-3 space-y-2 md:flex-1 md:overflow-y-auto">
+                      {qActiveTasks.length === 0 && qCompletedTasks.length === 0 ? (
+                        <div className="py-7 px-4 flex flex-col items-center justify-center text-center select-none text-zinc-400">
+                          <div className="w-8 h-8 rounded-full bg-zinc-100/90 flex items-center justify-center mb-1.5 text-zinc-400">
+                            <Check className="w-4 h-4" strokeWidth={2} />
+                          </div>
+                          <span className="text-xs font-medium text-zinc-500">No tasks in this quadrant</span>
+                        </div>
+                      ) : (
+                        <>
+                          {groupedSections.map((group) => {
+                            const isCollapsed = collapsedGroups[`${q.id}-${group.groupKey}`];
+                            return (
+                              <div key={group.groupKey} className="space-y-0.5">
+                                {group.title && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setCollapsedGroups((prev) => ({
+                                        ...prev,
+                                        [`${q.id}-${group.groupKey}`]: !prev[`${q.id}-${group.groupKey}`],
+                                      }))
+                                    }
+                                    className="w-full flex items-center gap-1.5 px-2 py-1.5 text-xs font-semibold text-zinc-600 hover:text-zinc-900 select-none text-left"
+                                  >
+                                    {isCollapsed ? (
+                                      <ChevronRight className="w-3.5 h-3.5 text-zinc-400" />
+                                    ) : (
+                                      <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
+                                    )}
+                                    <span>{group.title}</span>
+                                    <span className="font-mono-num text-[11px] text-zinc-400 font-normal ml-1">
+                                      {group.tasks.length}
+                                    </span>
+                                  </button>
+                                )}
+
+                                {!isCollapsed && (
+                                  <div className="space-y-0.5">
+                                    {group.tasks.map((task) => renderQuadrantTaskRow(task, q.id))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+
+                          {/* Completed section */}
+                          {!hideCompleted && qCompletedTasks.length > 0 && (
+                            <div className="pt-2 border-t border-zinc-100">
                               <button
                                 type="button"
                                 onClick={() =>
                                   setCollapsedGroups((prev) => ({
                                     ...prev,
-                                    [`${q.id}-${group.groupKey}`]: !prev[`${q.id}-${group.groupKey}`],
+                                    [`${q.id}-completed`]: !prev[`${q.id}-completed`],
                                   }))
                                 }
-                                className="w-full flex items-center gap-1.5 px-2 py-1 text-xs font-semibold text-zinc-600 hover:text-zinc-900 select-none text-left"
+                                className="flex items-center gap-1 text-[11px] font-medium text-zinc-400 hover:text-zinc-700 px-2 py-1"
                               >
-                                {isCollapsed ? (
-                                  <ChevronRight className="w-3 h-3 text-zinc-400" />
+                                {collapsedGroups[`${q.id}-completed`] ? (
+                                  <ChevronRight className="w-3 h-3" />
                                 ) : (
-                                  <ChevronDown className="w-3 h-3 text-zinc-400" />
+                                  <ChevronDown className="w-3 h-3" />
                                 )}
-                                <span>{group.title}</span>
-                                <span className="font-mono-num text-[11px] text-zinc-400 font-normal ml-1">
-                                  {group.tasks.length}
+                                <span>Completed</span>
+                                <span className="font-mono-num text-[11px]">
+                                  {qCompletedTasks.length}
                                 </span>
                               </button>
-                            )}
 
-                            {!isCollapsed && (
-                              <div className="space-y-0.5">
-                                {group.tasks.map((task) => renderQuadrantTaskRow(task, q.id))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-
-                      {/* Completed section */}
-                      {!hideCompleted && qCompletedTasks.length > 0 && (
-                        <div className="pt-2 border-t border-zinc-100">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setCollapsedGroups((prev) => ({
-                                ...prev,
-                                [`${q.id}-completed`]: !prev[`${q.id}-completed`],
-                              }))
-                            }
-                            className="flex items-center gap-1 text-[11px] font-medium text-zinc-400 hover:text-zinc-700 px-2 py-1"
-                          >
-                            {collapsedGroups[`${q.id}-completed`] ? (
-                              <ChevronRight className="w-3 h-3" />
-                            ) : (
-                              <ChevronDown className="w-3 h-3" />
-                            )}
-                            <span>Completed</span>
-                            <span className="font-mono-num text-[11px]">
-                              {qCompletedTasks.length}
-                            </span>
-                          </button>
-
-                          {!collapsedGroups[`${q.id}-completed`] && (
-                            <div className="space-y-0.5 pt-0.5">
-                              {qCompletedTasks.map((task) => renderQuadrantTaskRow(task, q.id))}
+                              {!collapsedGroups[`${q.id}-completed`] && (
+                                <div className="space-y-0.5 pt-0.5">
+                                  {qCompletedTasks.map((task) => renderQuadrantTaskRow(task, q.id))}
+                                </div>
+                              )}
                             </div>
                           )}
-                        </div>
+                        </>
                       )}
-                    </>
-                  )}
-                </div>
+                    </div>
 
-                {/* Instant Inline Quick-Add Input (Bottom of Quadrant) */}
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const text = inlineQuickInputs[q.id].trim();
-                    if (!text) return;
-                    addTask({
-                      title: text,
-                      priority: q.defaultPriority,
-                      dueDate: q.defaultDue,
-                      startDate: q.defaultDue,
-                      eisenhowerQuadrant: q.id,
-                    });
-                    setInlineQuickInputs((prev) => ({ ...prev, [q.id]: '' }));
-                  }}
-                  className="px-3 py-2 sm:py-1.5 border-t border-zinc-100 flex items-center gap-2 bg-zinc-50/60"
-                >
-                  <Plus className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                  <input
-                    type="text"
-                    value={inlineQuickInputs[q.id]}
-                    onChange={(e) =>
-                      setInlineQuickInputs((prev) => ({ ...prev, [q.id]: e.target.value }))
-                    }
-                    placeholder={`+ Add to ${q.title}...`}
-                    className="flex-1 text-xs bg-transparent focus:outline-none text-zinc-800 placeholder:text-zinc-400 py-0.5"
-                  />
-                </form>
+                    {/* Instant Inline Quick-Add Input (Bottom of Quadrant) */}
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const text = inlineQuickInputs[q.id].trim();
+                        if (!text) return;
+                        addTask({
+                          title: text,
+                          priority: q.defaultPriority,
+                          dueDate: q.defaultDue,
+                          startDate: q.defaultDue,
+                          eisenhowerQuadrant: q.id,
+                        });
+                        setInlineQuickInputs((prev) => ({ ...prev, [q.id]: '' }));
+                      }}
+                      className="px-3 py-2 sm:py-1.5 border-t border-zinc-100 flex items-center gap-2 bg-zinc-50/60"
+                    >
+                      <Plus className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                      <input
+                        type="text"
+                        value={inlineQuickInputs[q.id]}
+                        onChange={(e) =>
+                          setInlineQuickInputs((prev) => ({ ...prev, [q.id]: e.target.value }))
+                        }
+                        placeholder={`Add to ${q.title}...`}
+                        className="flex-1 text-xs bg-transparent focus:outline-none text-zinc-800 placeholder:text-zinc-400 py-0.5"
+                      />
+                    </form>
+                  </>
+                )}
               </section>
             );
           })}
