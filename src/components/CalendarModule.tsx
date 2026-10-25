@@ -30,8 +30,12 @@ import {
 import { useApp } from '../context/AppContext';
 import { TaskDetailPane } from './TaskDetailPane';
 import { isTaskDueOnDate } from '../utils/recurringTasks';
+import { Task } from '../types';
 
 type CalendarSubView = 'month' | 'week' | 'day' | 'multiday' | 'agenda';
+
+const MAX_MONTH_VISIBLE = 3;
+const MAX_ALLDAY_VISIBLE = 2;
 
 export const CalendarModule: React.FC = () => {
   const {
@@ -59,6 +63,9 @@ export const CalendarModule: React.FC = () => {
   const [subProvider, setSubProvider] = useState<'google' | 'outlook' | 'apple' | 'ics'>('google');
   const [quickCellDate, setQuickCellDate] = useState<string | null>(null);
   const [quickCellTitle, setQuickCellTitle] = useState('');
+  const [expandedDayDate, setExpandedDayDate] = useState<string | null>(null);
+  const [expandedDayNewTitle, setExpandedDayNewTitle] = useState('');
+  const [selectedCellDate, setSelectedCellDate] = useState<string | null>(null);
 
   const today = startOfToday();
   const todayStr = format(today, 'yyyy-MM-dd');
@@ -86,6 +93,34 @@ export const CalendarModule: React.FC = () => {
         ),
     [calendarSubscriptions]
   );
+
+  const sortDayTasks = (dayTaskList: Task[]): Task[] => {
+    return [...dayTaskList].sort((a, b) => {
+      const aDone = a.status === 'completed';
+      const bDone = b.status === 'completed';
+      if (aDone !== bDone) return aDone ? 1 : -1;
+
+      const aTimed = Boolean(a.startTime && !a.isAllDay);
+      const bTimed = Boolean(b.startTime && !b.isAllDay);
+      if (aTimed !== bTimed) return aTimed ? -1 : 1;
+
+      if (aTimed && bTimed && a.startTime && b.startTime) {
+        const timeCmp = a.startTime.localeCompare(b.startTime);
+        if (timeCmp !== 0) return timeCmp;
+      }
+
+      if (b.priority !== a.priority) return b.priority - a.priority;
+      return a.title.localeCompare(b.title);
+    });
+  };
+
+  const getTaskAccentColor = (task: Task): string => {
+    if (task.status === 'completed') return '#d4d4d8';
+    if (task.priority === 5) return '#f43f5e';
+    if (task.priority === 3) return '#f59e0b';
+    if (task.priority === 1) return '#3b82f6';
+    return lists.find((l) => l.id === task.listId)?.color || '#52525b';
+  };
 
   const monthDays = useMemo(() => {
     const start = startOfWeek(startOfMonth(cursorDate), { weekStartsOn: 0 });
@@ -130,6 +165,18 @@ export const CalendarModule: React.FC = () => {
     setQuickCellDate(null);
   };
 
+  const handleCreateInExpandedDay = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!expandedDayDate || !expandedDayNewTitle.trim()) return;
+    addTask({
+      title: expandedDayNewTitle.trim(),
+      dueDate: expandedDayDate,
+      startDate: expandedDayDate,
+      listId: 'inbox',
+    });
+    setExpandedDayNewTitle('');
+  };
+
   const headerDateLabel = useMemo(() => {
     if (subView === 'month') {
       return format(cursorDate, 'MMMM yyyy');
@@ -162,9 +209,9 @@ export const CalendarModule: React.FC = () => {
   return (
     <div className="flex-1 flex h-full min-w-0 bg-white">
       <div className="flex-1 flex flex-col h-full min-w-0">
-        {/* Calendar Header */}
+        {/* Calendar Header — Clean Date Range + Chevrons (No redundant Today button) */}
         <header className="min-h-12 md:h-13 py-2 md:py-0 px-3 sm:px-5 border-b border-zinc-200/80 flex flex-wrap items-center justify-between gap-2 shrink-0">
-          <div className="flex items-center justify-between w-full md:w-auto gap-2">
+          <div className="flex items-center justify-between w-full md:w-auto gap-2.5">
             <div className="flex items-center gap-1.5 min-w-0">
               <CalendarIcon className="w-4 h-4 text-zinc-700 shrink-0" strokeWidth={1.75} />
               <h1 className="text-sm font-semibold text-zinc-900 tracking-tight font-mono-num truncate">
@@ -172,37 +219,23 @@ export const CalendarModule: React.FC = () => {
               </h1>
             </div>
 
-            <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex items-center gap-0.5 bg-zinc-100 rounded-lg p-0.5 border border-zinc-200/70 shrink-0">
               <button
                 type="button"
-                aria-label="Jump to today"
-                onClick={() => setCursorDate(today)}
-                className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition-colors ${
-                  isSameDay(cursorDate, today)
-                    ? 'bg-zinc-100 text-zinc-800 border-zinc-200'
-                    : 'bg-white text-zinc-700 hover:text-zinc-900 hover:bg-zinc-50 border-zinc-300 shadow-2xs font-bold'
-                }`}
+                onClick={() => handleNavigate(-1)}
+                aria-label="Previous period"
+                className="p-1 rounded-md hover:bg-white text-zinc-600 transition-colors"
               >
-                Today
+                <ChevronLeft className="w-3.5 h-3.5" strokeWidth={1.75} />
               </button>
-              <div className="flex items-center gap-0.5 bg-zinc-100 rounded-lg p-0.5 border border-zinc-200/70">
-                <button
-                  type="button"
-                  onClick={() => handleNavigate(-1)}
-                  aria-label="Previous period"
-                  className="p-1 rounded-md hover:bg-white text-zinc-600 transition-colors"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" strokeWidth={1.75} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleNavigate(1)}
-                  aria-label="Next period"
-                  className="p-1 rounded-md hover:bg-white text-zinc-600 transition-colors"
-                >
-                  <ChevronRight className="w-3.5 h-3.5" strokeWidth={1.75} />
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => handleNavigate(1)}
+                aria-label="Next period"
+                className="p-1 rounded-md hover:bg-white text-zinc-600 transition-colors"
+              >
+                <ChevronRight className="w-3.5 h-3.5" strokeWidth={1.75} />
+              </button>
             </div>
           </div>
 
@@ -261,8 +294,8 @@ export const CalendarModule: React.FC = () => {
           {/* Main Calendar Grid */}
           <div className="flex-1 overflow-y-auto">
             {subView === 'month' && (
-              <div className="flex flex-col h-full min-h-[600px]">
-                <div className="grid grid-cols-7 border-b border-zinc-200/80 bg-zinc-50 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+              <div className="flex flex-col h-full min-h-[620px]">
+                <div className="grid grid-cols-7 border-b border-zinc-200/80 bg-zinc-50/80 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
                   {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
                     <div key={d} className="py-2 text-center border-r border-zinc-100">
                       {d}
@@ -275,103 +308,192 @@ export const CalendarModule: React.FC = () => {
                     const dateStr = format(day, 'yyyy-MM-dd');
                     const isCurrentMonth = isSameMonth(day, cursorDate);
                     const isTodayCell = isSameDay(day, today);
-                    const dayTasks = activeTasks.filter((t) => isTaskDueOnDate(t, dateStr));
+                    const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+                    const dayTasks = sortDayTasks(
+                      activeTasks.filter((t) => isTaskDueOnDate(t, dateStr))
+                    );
                     const dayEvents = externalEvents.filter((ev) => ev.date === dateStr);
+
+                    // Combine events + tasks with a strict visual cap of MAX_MONTH_VISIBLE (3)
+                    type CombinedItem =
+                      | { kind: 'event'; id: string; title: string; time?: string; color: string }
+                      | { kind: 'task'; task: Task };
+
+                    const combinedItems: CombinedItem[] = [
+                      ...dayEvents.map((ev) => ({
+                        kind: 'event' as const,
+                        id: ev.id,
+                        title: ev.title,
+                        time: ev.startTime,
+                        color: ev.color,
+                      })),
+                      ...dayTasks.map((task) => ({
+                        kind: 'task' as const,
+                        task,
+                      })),
+                    ];
+
+                    const visibleItems = combinedItems.slice(0, MAX_MONTH_VISIBLE);
+                    const hiddenItems = combinedItems.slice(MAX_MONTH_VISIBLE);
 
                     return (
                       <div
                         key={dateStr}
                         onClick={() => setQuickCellDate(dateStr)}
-                        className={`min-h-[72px] sm:min-h-[104px] p-1 sm:p-1.5 border-b border-r border-zinc-100 flex flex-col cursor-pointer ${
-                          isCurrentMonth ? 'bg-white hover:bg-zinc-50/60' : 'bg-zinc-50/50 text-zinc-400'
+                        className={`group min-h-[78px] sm:min-h-[112px] p-1.5 border-b border-r border-zinc-200/60 flex flex-col cursor-pointer transition-colors ${
+                          !isCurrentMonth
+                            ? 'bg-zinc-50/60 text-zinc-400'
+                            : isWeekend
+                              ? 'bg-zinc-50/25 hover:bg-zinc-50/70'
+                              : 'bg-white hover:bg-zinc-50/50'
                         }`}
                       >
-                        <div className="flex items-center justify-between mb-1">
+                        {/* Cell Top Row: Date Number + Quiet Task Count / Quick Add */}
+                        <div className="flex items-center justify-between mb-1.5">
                           <span
                             className={`text-xs font-mono-num w-6 h-6 rounded-md flex items-center justify-center ${
                               isTodayCell
                                 ? 'bg-zinc-900 text-white font-semibold'
-                                : 'text-zinc-600'
+                                : isCurrentMonth
+                                  ? 'text-zinc-700 font-medium'
+                                  : 'text-zinc-400'
                             }`}
                           >
                             {format(day, 'd')}
                           </span>
-                          <Plus className="w-3 h-3 text-zinc-300 opacity-0 hover:opacity-100" strokeWidth={1.75} />
+
+                          <div className="flex items-center gap-1">
+                            {combinedItems.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExpandedDayDate(dateStr);
+                                }}
+                                title={`View all ${combinedItems.length} items on ${format(day, 'MMM d')}`}
+                                className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono-num text-zinc-400 hover:text-zinc-800 hover:bg-zinc-100 transition-colors"
+                              >
+                                {combinedItems.length}
+                              </button>
+                            )}
+                            <Plus
+                              className="w-3 h-3 text-zinc-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                              strokeWidth={1.75}
+                            />
+                          </div>
                         </div>
 
                         {/* Mobile Clean Dots (<640px) */}
-                        <div className="sm:hidden flex items-center justify-center gap-0.5 mt-0.5">
-                          {dayEvents.slice(0, 2).map((ev) => (
-                            <span
-                              key={ev.id}
-                              className="w-1.5 h-1.5 rounded-full shrink-0"
-                              style={{ backgroundColor: ev.color }}
-                            />
-                          ))}
-                          {dayTasks.slice(0, 2).map((task) => (
-                            <span
-                              key={task.id}
-                              className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                                task.status === 'completed'
-                                  ? 'bg-zinc-300'
-                                  : task.priority === 5
-                                    ? 'bg-rose-500'
-                                    : task.priority === 3
-                                      ? 'bg-amber-500'
-                                      : 'bg-blue-600'
-                              }`}
-                            />
-                          ))}
-                          {dayTasks.length + dayEvents.length > 4 && (
-                            <span className="text-[8px] font-mono-num text-zinc-400 leading-none">
-                              +
+                        <div className="sm:hidden flex items-center justify-center gap-1 mt-1">
+                          {combinedItems.slice(0, 4).map((item, idx) => {
+                            const dotColor =
+                              item.kind === 'event'
+                                ? item.color
+                                : getTaskAccentColor(item.task);
+                            return (
+                              <span
+                                key={idx}
+                                className="w-1.5 h-1.5 rounded-full shrink-0"
+                                style={{ backgroundColor: dotColor }}
+                              />
+                            );
+                          })}
+                          {combinedItems.length > 4 && (
+                            <span className="text-[9px] font-mono-num text-zinc-400">
+                              +{combinedItems.length - 4}
                             </span>
                           )}
                         </div>
 
-                        {/* Tablet/Desktop Full Event & Task Pills (sm and up) */}
-                        <div className="hidden sm:block space-y-1 overflow-y-auto max-h-28">
-                          {dayEvents.map((ev) => (
-                            <div
-                              key={ev.id}
-                              style={{ borderLeftColor: ev.color }}
-                              className="px-1.5 py-0.5 rounded bg-zinc-100 border-l-2 text-[10px] text-zinc-700 truncate font-medium font-mono-num"
-                            >
-                              {ev.startTime} {ev.title}
-                            </div>
-                          ))}
+                        {/* Tablet/Desktop Flat Typographic Bars — Capped at 3, Zero Scrollbars */}
+                        <div className="hidden sm:flex flex-col gap-1 flex-1">
+                          {visibleItems.map((item) => {
+                            if (item.kind === 'event') {
+                              return (
+                                <div
+                                  key={item.id}
+                                  style={{ borderLeftColor: item.color }}
+                                  className="h-[21px] px-1.5 rounded-[4px] bg-sky-50/70 border-l-[2.5px] text-[11px] text-zinc-700 truncate flex items-center gap-1.5 font-medium"
+                                >
+                                  {item.time && (
+                                    <span className="font-mono-num text-[10px] text-zinc-400 shrink-0">
+                                      {item.time}
+                                    </span>
+                                  )}
+                                  <span className="truncate">{item.title}</span>
+                                </div>
+                              );
+                            }
 
-                          {dayTasks.map((task) => {
-                            const listColor =
-                              lists.find((l) => l.id === task.listId)?.color || '#3b66f5';
+                            const { task } = item;
+                            const isSelectedHere =
+                              selectedTaskId === task.id && selectedCellDate === dateStr;
+                            const isDone = task.status === 'completed';
+                            const accentColor = getTaskAccentColor(task);
+
                             return (
                               <div
                                 key={task.id}
                                 onClick={(e) => {
                                   e.stopPropagation();
+                                  setSelectedCellDate(dateStr);
                                   setSelectedTaskId(task.id);
                                 }}
-                                style={{ borderLeftColor: listColor }}
-                                className={`px-1.5 py-0.5 rounded border-l-2 text-[10px] truncate flex items-center gap-1 ${
-                                  selectedTaskId === task.id
-                                    ? 'bg-zinc-900 text-white font-semibold'
-                                    : task.status === 'completed'
-                                      ? 'bg-zinc-100 text-zinc-400'
-                                      : 'bg-zinc-50 border border-zinc-200/60 text-zinc-800 hover:bg-zinc-100'
+                                style={{ borderLeftColor: accentColor }}
+                                className={`h-[21px] px-1.5 rounded-[4px] border-l-[2.5px] text-[11px] leading-none flex items-center gap-1.5 transition-colors ${
+                                  isSelectedHere
+                                    ? 'bg-blue-50/95 text-blue-950 ring-1 ring-blue-500/30 font-semibold'
+                                    : isDone
+                                      ? 'bg-zinc-50 text-zinc-400'
+                                      : 'bg-zinc-100/75 hover:bg-zinc-200/65 text-zinc-800 font-medium'
                                 }`}
                               >
                                 {task.startTime && (
-                                  <span className="font-mono-num text-[9px] opacity-75">
+                                  <span
+                                    className={`font-mono-num text-[10px] shrink-0 ${
+                                      isDone ? 'text-zinc-300' : 'text-zinc-500'
+                                    }`}
+                                  >
                                     {task.startTime}
                                   </span>
                                 )}
                                 <span className="truncate flex-1">{task.title}</span>
                                 {task.recurrenceRule && (
-                                  <Repeat className="w-2.5 h-2.5 shrink-0 opacity-70" />
+                                  <Repeat className="w-2.5 h-2.5 shrink-0 text-zinc-400" />
                                 )}
                               </div>
                             );
                           })}
+
+                          {/* Overflow Summary Pill (+N more) */}
+                          {hiddenItems.length > 0 && (
+                            <button
+                              type="button"
+                              data-testid={`calendar-more-${dateStr}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedDayDate(dateStr);
+                              }}
+                              className="h-[20px] px-1.5 rounded-[4px] bg-zinc-100/60 hover:bg-zinc-200/80 text-[10px] font-mono-num font-semibold text-zinc-500 hover:text-zinc-900 flex items-center justify-between transition-colors mt-auto"
+                            >
+                              <span>+{hiddenItems.length} more</span>
+                              <span className="flex items-center gap-0.5">
+                                {hiddenItems.slice(0, 4).map((hi, idx) => {
+                                  const c =
+                                    hi.kind === 'event'
+                                      ? hi.color
+                                      : getTaskAccentColor(hi.task);
+                                  return (
+                                    <span
+                                      key={idx}
+                                      className="w-1.5 h-1.5 rounded-full"
+                                      style={{ backgroundColor: c }}
+                                    />
+                                  );
+                                })}
+                              </span>
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
@@ -398,53 +520,107 @@ export const CalendarModule: React.FC = () => {
                         ? multiDays
                         : [cursorDate];
 
+                  const allDayCap = subView === 'day' ? 5 : MAX_ALLDAY_VISIBLE;
+
                   return (
                     <>
-                      {/* Column Headers + All-Day Row */}
+                      {/* Column Headers + Compact All-Day Row */}
                       <div
                         style={{
                           gridTemplateColumns: `64px repeat(${cols.length}, minmax(0, 1fr))`,
                         }}
-                        className="grid border-b border-zinc-200/80 bg-zinc-50 sticky top-0 z-10"
+                        className="grid border-b border-zinc-200/80 bg-zinc-50/95 backdrop-blur-xs sticky top-0 z-10"
                       >
                         <div className="p-2 text-[10px] font-semibold text-zinc-400 border-r border-zinc-200/80 flex items-end justify-center">
                           All-Day
                         </div>
                         {cols.map((d) => {
                           const dStr = format(d, 'yyyy-MM-dd');
-                          const allDayTasks = activeTasks.filter(
-                            (t) => isTaskDueOnDate(t, dStr) && (!t.startTime || t.isAllDay)
+                          const dayAllTasks = sortDayTasks(
+                            activeTasks.filter((t) => isTaskDueOnDate(t, dStr))
                           );
+                          const allDayTasks = dayAllTasks.filter(
+                            (t) => !t.startTime || t.isAllDay
+                          );
+                          const visibleAllDay = allDayTasks.slice(0, allDayCap);
+                          const hiddenAllDayCount = Math.max(
+                            0,
+                            allDayTasks.length - visibleAllDay.length
+                          );
+
                           return (
-                            <div key={dStr} className="p-2 border-r border-zinc-200/80 space-y-1">
-                              <div className="flex items-center justify-between">
-                                <span className="text-[11px] font-semibold text-zinc-500">
-                                  {format(d, 'EEE')}
-                                </span>
-                                <span
-                                  className={`text-xs font-mono-num px-1.5 py-0.5 rounded-md ${
-                                    dStr === todayStr
-                                      ? 'bg-zinc-900 text-white font-semibold'
-                                      : 'text-zinc-700 font-semibold'
-                                  }`}
-                                >
-                                  {format(d, 'MMM d')}
-                                </span>
-                              </div>
-                              <div className="space-y-1 pt-1">
-                                {allDayTasks.map((t) => (
-                                  <div
-                                    key={t.id}
-                                    onClick={() => setSelectedTaskId(t.id)}
-                                    className="px-2 py-0.5 rounded bg-zinc-900 text-white text-[10px] font-medium truncate cursor-pointer flex items-center justify-between gap-1"
+                            <div
+                              key={dStr}
+                              className="p-2 border-r border-zinc-200/80 flex flex-col gap-1 min-w-0"
+                            >
+                              <div className="flex items-center justify-between gap-1">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span className="text-[11px] font-medium text-zinc-500">
+                                    {format(d, 'EEE')}
+                                  </span>
+                                  <span
+                                    className={`text-xs font-mono-num px-1.5 py-0.5 rounded-md ${
+                                      dStr === todayStr
+                                        ? 'bg-zinc-900 text-white font-semibold'
+                                        : 'text-zinc-800 font-semibold'
+                                    }`}
                                   >
-                                    <span className="truncate">{t.title}</span>
-                                    {t.recurrenceRule && (
-                                      <Repeat className="w-2.5 h-2.5 shrink-0 opacity-75" />
-                                    )}
-                                  </div>
-                                ))}
+                                    {format(d, 'd')}
+                                  </span>
+                                </div>
+                                {dayAllTasks.length > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setExpandedDayDate(dStr)}
+                                    title={`View all ${dayAllTasks.length} tasks on ${format(d, 'MMM d')}`}
+                                    className="text-[10px] font-mono-num text-zinc-400 hover:text-zinc-800 px-1 py-0.5 rounded hover:bg-zinc-200/60 transition-colors"
+                                  >
+                                    {dayAllTasks.length}d
+                                  </button>
+                                )}
                               </div>
+
+                              {visibleAllDay.length > 0 && (
+                                <div className="space-y-1 pt-0.5">
+                                  {visibleAllDay.map((t) => {
+                                    const accentColor = getTaskAccentColor(t);
+                                    const isSelectedHere =
+                                      selectedTaskId === t.id && selectedCellDate === dStr;
+                                    return (
+                                      <div
+                                        key={t.id}
+                                        onClick={() => {
+                                          setSelectedCellDate(dStr);
+                                          setSelectedTaskId(t.id);
+                                        }}
+                                        style={{ borderLeftColor: accentColor }}
+                                        className={`h-[21px] px-1.5 rounded-[4px] border border-zinc-200/70 border-l-[2.5px] text-[10px] font-medium truncate cursor-pointer flex items-center justify-between gap-1 transition-colors ${
+                                          isSelectedHere
+                                            ? 'bg-blue-50 text-blue-950 ring-1 ring-blue-500/30 font-semibold'
+                                            : t.status === 'completed'
+                                              ? 'bg-zinc-100/70 text-zinc-400'
+                                              : 'bg-white hover:bg-zinc-100/80 text-zinc-800'
+                                        }`}
+                                      >
+                                        <span className="truncate">{t.title}</span>
+                                        {t.recurrenceRule && (
+                                          <Repeat className="w-2.5 h-2.5 shrink-0 text-zinc-400" />
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+
+                                  {hiddenAllDayCount > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setExpandedDayDate(dStr)}
+                                      className="w-full h-[19px] px-1.5 rounded-[4px] bg-zinc-200/60 hover:bg-zinc-200 text-[10px] font-mono-num font-semibold text-zinc-600 hover:text-zinc-900 text-left transition-colors"
+                                    >
+                                      +{hiddenAllDayCount} more all-day
+                                    </button>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           );
                         })}
@@ -459,68 +635,102 @@ export const CalendarModule: React.FC = () => {
                             style={{
                               gridTemplateColumns: `64px repeat(${cols.length}, minmax(0, 1fr))`,
                             }}
-                            className="grid border-b border-zinc-100 min-h-[56px]"
+                            className="grid border-b border-zinc-100 min-h-[54px]"
                           >
                             <div className="px-2 py-1 text-[10px] font-mono-num text-zinc-400 border-r border-zinc-200/80 text-right">
                               {hrPrefix}:00
                             </div>
                             {cols.map((d) => {
                               const dStr = format(d, 'yyyy-MM-dd');
-                              const slotTasks = activeTasks.filter(
-                                (t) =>
-                                  isTaskDueOnDate(t, dStr) &&
-                                  t.startTime &&
-                                  t.startTime.startsWith(hrPrefix)
+                              const slotTasks = sortDayTasks(
+                                activeTasks.filter(
+                                  (t) =>
+                                    isTaskDueOnDate(t, dStr) &&
+                                    t.startTime &&
+                                    t.startTime.startsWith(hrPrefix)
+                                )
                               );
                               const slotEvents = externalEvents.filter(
                                 (ev) => ev.date === dStr && ev.startTime.startsWith(hrPrefix)
+                              );
+
+                              const maxHourlyVisible = subView === 'day' ? 6 : 2;
+                              const visibleSlotTasks = slotTasks.slice(0, maxHourlyVisible);
+                              const hiddenSlotCount = Math.max(
+                                0,
+                                slotTasks.length - visibleSlotTasks.length
                               );
 
                               return (
                                 <div
                                   key={`${dStr}-${hr}`}
                                   onClick={() => setQuickCellDate(dStr)}
-                                  className="p-1 border-r border-zinc-100 hover:bg-zinc-50/70 space-y-1 cursor-pointer"
+                                  className="p-1 border-r border-zinc-100 hover:bg-zinc-50/60 space-y-1 cursor-pointer min-w-0"
                                 >
                                   {slotEvents.map((ev) => (
                                     <div
                                       key={ev.id}
-                                      className="p-1.5 rounded-md bg-zinc-100 border border-zinc-200 text-[10px] text-zinc-800 font-medium"
+                                      style={{ borderLeftColor: ev.color }}
+                                      className="px-2 py-1 rounded-[4px] bg-sky-50/70 border border-sky-200/60 border-l-[2.5px] text-[10px] text-zinc-800 font-medium"
                                     >
                                       <div className="font-mono-num text-zinc-500">
-                                        {ev.startTime} – {ev.endTime} ({ev.calendarName})
+                                        {ev.startTime} – {ev.endTime}
                                       </div>
-                                      <div>{ev.title}</div>
+                                      <div className="truncate">{ev.title}</div>
                                     </div>
                                   ))}
-                                  {slotTasks.map((t) => (
-                                    <div
-                                      key={t.id}
+                                  {visibleSlotTasks.map((t) => {
+                                    const accentColor = getTaskAccentColor(t);
+                                    const isSelectedHere =
+                                      selectedTaskId === t.id && selectedCellDate === dStr;
+                                    return (
+                                      <div
+                                        key={t.id}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSelectedCellDate(dStr);
+                                          setSelectedTaskId(t.id);
+                                        }}
+                                        style={{ borderLeftColor: accentColor }}
+                                        className={`px-2 py-1 rounded-[4px] border border-l-[3px] text-[11px] font-medium cursor-pointer transition-colors ${
+                                          isSelectedHere
+                                            ? 'bg-blue-50 border-blue-300 text-blue-950'
+                                            : t.priority === 5
+                                              ? 'bg-rose-50/80 border-rose-200/70 text-rose-950'
+                                              : t.priority === 3
+                                                ? 'bg-amber-50/80 border-amber-200/70 text-amber-950'
+                                                : 'bg-zinc-50/90 hover:bg-zinc-100 border-zinc-200/80 text-zinc-800'
+                                        }`}
+                                      >
+                                        <div className="flex items-center justify-between text-[10px] font-mono-num text-zinc-500">
+                                          <span>
+                                            {t.startTime}
+                                            {t.endTime ? ` – ${t.endTime}` : ''}
+                                          </span>
+                                          {t.durationMinutes && <span>{t.durationMinutes}m</span>}
+                                        </div>
+                                        <div className="truncate font-semibold flex items-center justify-between gap-1">
+                                          <span className="truncate">{t.title}</span>
+                                          {t.recurrenceRule && (
+                                            <Repeat className="w-2.5 h-2.5 shrink-0 text-zinc-400" />
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+
+                                  {hiddenSlotCount > 0 && (
+                                    <button
+                                      type="button"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        setSelectedTaskId(t.id);
+                                        setExpandedDayDate(dStr);
                                       }}
-                                      className={`p-1.5 rounded-md border text-[11px] font-medium cursor-pointer ${
-                                        t.priority === 5
-                                          ? 'bg-rose-50 border-rose-200/80 text-rose-900'
-                                          : 'bg-zinc-900 border-zinc-900 text-white'
-                                      }`}
+                                      className="w-full h-[19px] px-1.5 rounded-[4px] bg-zinc-100 hover:bg-zinc-200 text-[10px] font-mono-num font-semibold text-zinc-600 text-left"
                                     >
-                                      <div className="flex items-center justify-between text-[10px] font-mono-num opacity-75">
-                                        <span>
-                                          {t.startTime}
-                                          {t.endTime ? ` – ${t.endTime}` : ''}
-                                        </span>
-                                        {t.durationMinutes && <span>{t.durationMinutes}m</span>}
-                                      </div>
-                                      <div className="truncate font-semibold flex items-center justify-between gap-1">
-                                        <span className="truncate">{t.title}</span>
-                                        {t.recurrenceRule && (
-                                          <Repeat className="w-2.5 h-2.5 shrink-0 opacity-75" />
-                                        )}
-                                      </div>
-                                    </div>
-                                  ))}
+                                      +{hiddenSlotCount} more in this hour
+                                    </button>
+                                  )}
                                 </div>
                               );
                             })}
@@ -537,7 +747,9 @@ export const CalendarModule: React.FC = () => {
               <div className="max-w-3xl mx-auto p-3 sm:p-6 space-y-4 sm:space-y-5">
                 {Array.from({ length: 7 }, (_, i) => addDays(cursorDate, i)).map((day) => {
                   const dStr = format(day, 'yyyy-MM-dd');
-                  const dayTasks = activeTasks.filter((t) => isTaskDueOnDate(t, dStr));
+                  const dayTasks = sortDayTasks(
+                    activeTasks.filter((t) => isTaskDueOnDate(t, dStr))
+                  );
                   const dayEvents = externalEvents.filter((ev) => ev.date === dStr);
 
                   return (
@@ -574,7 +786,10 @@ export const CalendarModule: React.FC = () => {
                             .map((t) => (
                               <div
                                 key={t.id}
-                                onClick={() => setSelectedTaskId(t.id)}
+                                onClick={() => {
+                                  setSelectedCellDate(dStr);
+                                  setSelectedTaskId(t.id);
+                                }}
                                 className="flex items-center justify-between px-3 py-2 rounded-lg bg-zinc-50 hover:bg-zinc-100/80 text-xs cursor-pointer border border-zinc-200/60"
                               >
                                 <div className="flex items-center gap-2">
@@ -612,7 +827,10 @@ export const CalendarModule: React.FC = () => {
                                 .map((t) => (
                                   <div
                                     key={t.id}
-                                    onClick={() => setSelectedTaskId(t.id)}
+                                    onClick={() => {
+                                      setSelectedCellDate(dStr);
+                                      setSelectedTaskId(t.id);
+                                    }}
                                     className="flex items-center justify-between px-3 py-2 rounded-lg bg-zinc-50/60 hover:bg-zinc-100/80 text-xs cursor-pointer border border-zinc-200/40"
                                   >
                                     <div className="flex items-center gap-2">
@@ -646,7 +864,7 @@ export const CalendarModule: React.FC = () => {
             )}
           </div>
 
-          {/* Unscheduled Tasks Arrangement Drawer (Premium Time-Blocking Helper) */}
+          {/* Unscheduled Tasks Arrangement Drawer */}
           {showUnscheduledDrawer && (
             <>
               <div
@@ -710,6 +928,151 @@ export const CalendarModule: React.FC = () => {
 
       {/* Right Task Detail Inspector */}
       <TaskDetailPane />
+
+      {/* Day Schedule Overview Popover / Sheet (Opens on +N more or day count click) */}
+      {expandedDayDate && (
+        <div
+          onClick={() => setExpandedDayDate(null)}
+          className="fixed inset-0 z-50 bg-zinc-950/35 backdrop-blur-[1px] flex items-center justify-center p-4 animate-backdrop"
+        >
+          <div
+            role="dialog"
+            aria-label="Day Schedule Overview"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white border border-zinc-200/90 rounded-xl shadow-xl w-full max-w-md overflow-hidden flex flex-col max-h-[80dvh] animate-modal"
+          >
+            {(() => {
+              const dayObj = parseISO(expandedDayDate);
+              const dayTasks = sortDayTasks(
+                activeTasks.filter((t) => isTaskDueOnDate(t, expandedDayDate))
+              );
+              const dayEvents = externalEvents.filter((ev) => ev.date === expandedDayDate);
+              const completedCount = dayTasks.filter((t) => t.status === 'completed').length;
+
+              return (
+                <>
+                  {/* Header */}
+                  <div className="px-4 py-3 border-b border-zinc-200/80 flex items-center justify-between bg-zinc-50/60">
+                    <div>
+                      <h3 className="text-sm font-semibold text-zinc-900 tracking-tight">
+                        {format(dayObj, 'EEEE, MMMM d, yyyy')}
+                      </h3>
+                      <p className="text-[11px] font-mono-num text-zinc-500 mt-0.5">
+                        {dayTasks.length} {dayTasks.length === 1 ? 'task' : 'tasks'}
+                        {dayEvents.length > 0 ? ` · ${dayEvents.length} events` : ''}
+                        {completedCount > 0 ? ` · ${completedCount} completed` : ''}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="Close day overview"
+                      onClick={() => setExpandedDayDate(null)}
+                      className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-800 hover:bg-zinc-200/60 transition-colors"
+                    >
+                      <X className="w-4 h-4" strokeWidth={1.75} />
+                    </button>
+                  </div>
+
+                  {/* Chronological Item List */}
+                  <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+                    {dayEvents.map((ev) => (
+                      <div
+                        key={ev.id}
+                        style={{ borderLeftColor: ev.color }}
+                        className="px-3 py-2 rounded-lg bg-sky-50/60 border border-sky-200/60 border-l-[3px] flex items-center justify-between text-xs"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-semibold text-zinc-800 truncate">{ev.title}</div>
+                          <div className="text-[10px] text-zinc-500">{ev.calendarName}</div>
+                        </div>
+                        <span className="font-mono-num text-[11px] text-zinc-600 shrink-0 ml-2">
+                          {ev.startTime} – {ev.endTime}
+                        </span>
+                      </div>
+                    ))}
+
+                    {dayTasks.length === 0 && dayEvents.length === 0 ? (
+                      <div className="py-8 text-center text-xs text-zinc-400">
+                        No tasks scheduled for this date.
+                      </div>
+                    ) : (
+                      dayTasks.map((t) => {
+                        const isDone = t.status === 'completed';
+                        const accentColor = getTaskAccentColor(t);
+                        const taskList = lists.find((l) => l.id === t.listId);
+
+                        return (
+                          <div
+                            key={t.id}
+                            onClick={() => {
+                              setSelectedCellDate(expandedDayDate);
+                              setSelectedTaskId(t.id);
+                              setExpandedDayDate(null);
+                            }}
+                            style={{ borderLeftColor: accentColor }}
+                            className={`px-3 py-2 rounded-lg border border-zinc-200/70 border-l-[3px] flex items-center justify-between gap-2.5 cursor-pointer transition-colors ${
+                              isDone
+                                ? 'bg-zinc-50/60 text-zinc-400'
+                                : 'bg-white hover:bg-zinc-50 text-zinc-900'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                              <input
+                                type="checkbox"
+                                checked={isDone}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={() => toggleTaskStatus(t.id)}
+                                className="rounded text-zinc-900 shrink-0"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="text-xs font-medium truncate flex items-center gap-1.5">
+                                  <span className="truncate">{t.title}</span>
+                                  {t.recurrenceRule && (
+                                    <Repeat className="w-3 h-3 text-zinc-400 shrink-0" />
+                                  )}
+                                </div>
+                                {taskList && (
+                                  <div className="text-[10px] text-zinc-400 truncate">
+                                    {taskList.name}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <span className="font-mono-num text-[11px] text-zinc-500 bg-zinc-100 px-1.5 py-0.5 rounded shrink-0">
+                              {t.startTime || 'All-Day'}
+                            </span>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Quick Add Footer inside Day Overview */}
+                  <form
+                    onSubmit={handleCreateInExpandedDay}
+                    className="p-3 border-t border-zinc-200/80 bg-zinc-50/60 flex items-center gap-2"
+                  >
+                    <input
+                      type="text"
+                      value={expandedDayNewTitle}
+                      onChange={(e) => setExpandedDayNewTitle(e.target.value)}
+                      placeholder={`+ Add task on ${format(dayObj, 'MMM d')}...`}
+                      className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-zinc-200 bg-white focus:outline-none focus:border-zinc-900"
+                    />
+                    <button
+                      type="submit"
+                      className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-semibold shrink-0"
+                    >
+                      Add
+                    </button>
+                  </form>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
 
       {/* Quick Create Task on Selected Date Modal */}
       {quickCellDate && (

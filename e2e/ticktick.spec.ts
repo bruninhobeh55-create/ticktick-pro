@@ -535,7 +535,7 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
     }
   });
 
-  test('Bug 2 Verification: Calendar Date Range Header Label Updates Across Views and Separates Today Button', async ({
+  test('Bug 2 Verification: Calendar Date Range Header Label, Today Button Removed & High-Density Day Overview Popover', async ({
     page,
     isMobile,
   }) => {
@@ -550,14 +550,23 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
     // Verify Calendar is rendered
     await expect(page.getByRole('button', { name: 'Month', exact: true })).toBeVisible();
 
-    // Verify standalone [ Today ] button exists
-    const todayBtn = page.locator('button[aria-label="Jump to today"]');
-    await expect(todayBtn).toBeVisible();
-    await expect(todayBtn).toHaveText('Today');
+    // Verify Today button is completely removed from Calendar header
+    await expect(page.locator('header button', { hasText: 'Today' })).toHaveCount(0);
 
-    // Verify navigation chevrons are standalone buttons
+    // Verify navigation chevrons exist
     await expect(page.locator('button[aria-label="Previous period"]')).toBeVisible();
     await expect(page.locator('button[aria-label="Next period"]')).toBeVisible();
+
+    // On desktop Month view, verify busy day shows "+N more" pill and opens Day Schedule Overview
+    if (!isMobile) {
+      const moreBtn = page.locator('button[data-testid^="calendar-more-"]').first();
+      await expect(moreBtn).toBeVisible();
+      await moreBtn.click();
+      const dayDialog = page.locator('[role="dialog"][aria-label="Day Schedule Overview"]');
+      await expect(dayDialog).toBeVisible();
+      await page.locator('button[aria-label="Close day overview"]').click();
+      await expect(dayDialog).toHaveCount(0);
+    }
 
     // Verify Month view header title
     const headerTitle = page.locator('header h1');
