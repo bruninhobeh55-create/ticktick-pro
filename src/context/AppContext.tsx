@@ -185,6 +185,7 @@ interface AppContextValue {
   setWhiteNoiseVolume: (v: number) => void;
   resetPomoTimer: () => void;
   completeCurrentPomoSession: (note?: string) => void;
+  startTaskFocus: (taskId: string, mode: 'pomo' | 'stopwatch') => void;
   logManualFocusSession: (
     taskTitle: string,
     durationMinutes: number,
@@ -715,6 +716,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [setPomoRunning]);
 
+  const startTaskFocus = useCallback(
+    (taskId: string, mode: 'pomo' | 'stopwatch') => {
+      setActivePomoTaskId(taskId);
+      setPomoModeState(mode);
+
+      const targetTask = tasksRef.current.find((t) => t.id === taskId);
+      const taskTitle = targetTask?.title || 'Deep Focus Session';
+
+      if (mode === 'pomo') {
+        setPomoPhaseState('work');
+        const dur = preferencesRef.current.pomoDuration * 60;
+        setPomoSecondsLeft(dur);
+        pomoSecondsLeftRef.current = dur;
+        backgroundTimerEngine.startPomodoro(dur, 'work', taskTitle);
+      } else {
+        setStopwatchSeconds(0);
+        stopwatchSecondsRef.current = 0;
+        backgroundTimerEngine.startStopwatch(0);
+      }
+
+      setPomoRunningState(true);
+      setActiveModule('pomodoro');
+    },
+    [setActiveModule]
+  );
+
   const logManualFocusSession = (
     taskTitle: string,
     durationMinutes: number,
@@ -789,7 +816,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       emailReminder: partial.emailReminder ?? false,
       locationReminder: partial.locationReminder,
       assignee: partial.assignee,
-      estimatedPomos: partial.estimatedPomos ?? 1,
+      estimatedPomos: partial.estimatedPomos ?? 0,
       completedPomos: 0,
       focusSeconds: 0,
       subtasks: partial.subtasks ?? [],
@@ -1422,6 +1449,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const clearAllWorkspaceData = () => {
+    const ts = Date.now();
+    localUpdatedAtRef.current = ts;
+    localStorage.setItem('ticktick_v2_updated_at', String(ts));
+    if (channelRef.current) {
+      channelRef.current.unsubscribe();
+      channelRef.current = null;
+    }
+    saveStored('tasks', []);
+    saveStored('lists', []);
+    saveStored('folders', []);
+    saveStored('sections', []);
+    saveStored('tags', []);
+    saveStored('filters', []);
+    saveStored('habits', []);
+    saveStored('pomo_sessions', []);
+    saveStored('countdowns', []);
+    saveStored('templates', []);
+    saveStored('cal_subs', []);
     setTasks([]);
     setLists([]);
     setFolders([]);
@@ -1963,7 +2008,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               reminders: Array.isArray(row.reminders) ? (row.reminders as string[]) : [],
               constantReminder: Boolean(row.constant_reminder),
               emailReminder: Boolean(row.email_reminder),
-              estimatedPomos: Number(row.estimated_pomos || 1),
+              estimatedPomos: Number(row.estimated_pomos || 0),
               completedPomos: Number(row.completed_pomos || 0),
               focusSeconds: Number(row.focus_seconds || 0),
               subtasks: Array.isArray(row.subtasks) ? (row.subtasks as Task['subtasks']) : [],
@@ -2126,6 +2171,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setWhiteNoiseVolume,
       resetPomoTimer,
       completeCurrentPomoSession,
+      startTaskFocus,
       logManualFocusSession,
       deletePomodoroSession,
       clearPomodoroSessions,

@@ -20,6 +20,7 @@ import {
   Play,
   Plus,
   Repeat,
+  Timer,
   Trash2,
   User,
   X,
@@ -44,14 +45,13 @@ export const TaskDetailPane: React.FC = () => {
     addTaskComment,
     addTaskAttachment,
     saveTaskAsTemplate,
-    setActiveModule,
-    setActivePomoTaskId,
-    setPomoRunning,
     rightPaneWidth,
     setRightPaneWidth,
     triggerTaskReminderNow,
     requestNotificationPermission,
     notificationPermission,
+    preferences,
+    startTaskFocus,
   } = useApp();
 
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
@@ -63,6 +63,7 @@ export const TaskDetailPane: React.FC = () => {
   const [templateSavedBanner, setTemplateSavedBanner] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [isSubtasksCompletedCollapsed, setIsSubtasksCompletedCollapsed] = useState(false);
+  const [showFocusMenu, setShowFocusMenu] = useState(false);
 
   const handleMouseDownResize = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -118,11 +119,12 @@ export const TaskDetailPane: React.FC = () => {
 
   const isDone = task.status === 'completed';
 
-  const handleStartPomodoroForTask = () => {
-    setActivePomoTaskId(task.id);
-    setPomoRunning(true);
-    setActiveModule('pomodoro');
-  };
+  const focusButtonLabel =
+    task.estimatedPomos > 0
+      ? `Focus (${task.completedPomos}/${task.estimatedPomos} Pomo)`
+      : task.completedPomos > 0
+        ? `Focus (${task.completedPomos} Pomo done)`
+        : 'Start Focus';
 
   return (
     <>
@@ -273,13 +275,143 @@ export const TaskDetailPane: React.FC = () => {
             />
 
             <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                onClick={handleStartPomodoroForTask}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-zinc-900 text-white hover:bg-zinc-800 font-mono-num"
-              >
-                <Play className="w-3 h-3 fill-current" />
-                Focus ({task.completedPomos}/{task.estimatedPomos} Pomo)
-              </button>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowFocusMenu((prev) => !prev)}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-zinc-900 text-white hover:bg-zinc-800 font-mono-num transition-colors shadow-2xs"
+                >
+                  <Play className="w-3 h-3 fill-current" />
+                  <span>{focusButtonLabel}</span>
+                  <ChevronDown
+                    className={`w-3 h-3 text-zinc-300 transition-transform ${
+                      showFocusMenu ? 'rotate-180' : ''
+                    }`}
+                  />
+                </button>
+
+                {showFocusMenu && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setShowFocusMenu(false)}
+                    />
+                    <div className="absolute left-0 top-full mt-1.5 z-50 w-72 sm:w-80 rounded-xl bg-white shadow-xl border border-zinc-200/90 p-3 space-y-2.5 animate-sheet-up">
+                      <div className="flex items-center justify-between border-b border-zinc-100 pb-2">
+                        <div className="text-xs font-semibold text-zinc-800 flex items-center gap-1.5">
+                          <Timer className="w-3.5 h-3.5 text-zinc-600" />
+                          <span>Choose Focus Mode</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowFocusMenu(false)}
+                          className="p-1 rounded-md text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        {/* Pomodoro Mode Card */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowFocusMenu(false);
+                            startTaskFocus(task.id, 'pomo');
+                          }}
+                          className="w-full text-left p-2.5 rounded-lg border border-zinc-200/80 hover:border-zinc-900 hover:bg-zinc-50 transition-all flex items-start gap-2.5 group"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-rose-50 border border-rose-200/80 text-rose-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                            <Timer className="w-4 h-4" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-semibold text-zinc-900">
+                                Pomodoro Timer
+                              </span>
+                              <span className="text-[10px] font-mono-num font-semibold text-zinc-600 bg-zinc-100 px-1.5 py-0.5 rounded">
+                                {preferences.pomoDuration}m
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-zinc-500 mt-0.5 leading-snug">
+                              Countdown interval with automatic rest breaks.
+                            </p>
+                            {task.estimatedPomos > 0 && (
+                              <div className="text-[10px] text-zinc-400 mt-1 font-mono-num">
+                                Target: {task.completedPomos}/{task.estimatedPomos} completed
+                              </div>
+                            )}
+                          </div>
+                        </button>
+
+                        {/* Stopwatch Mode Card */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowFocusMenu(false);
+                            startTaskFocus(task.id, 'stopwatch');
+                          }}
+                          className="w-full text-left p-2.5 rounded-lg border border-zinc-200/80 hover:border-zinc-900 hover:bg-zinc-50 transition-all flex items-start gap-2.5 group"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200/80 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                            <Clock className="w-4 h-4" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-semibold text-zinc-900">
+                                Stopwatch
+                              </span>
+                              <span className="text-[10px] font-mono-num font-semibold text-zinc-600 bg-zinc-100 px-1.5 py-0.5 rounded">
+                                Count-up
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-zinc-500 mt-0.5 leading-snug">
+                              Open-ended tracking from 00:00 without countdown pressure.
+                            </p>
+                          </div>
+                        </button>
+                      </div>
+
+                      {/* Quick Estimated Pomos Configuration */}
+                      <div className="pt-2 border-t border-zinc-100 flex items-center justify-between gap-2">
+                        <div className="text-[11px] text-zinc-600">
+                          <span className="font-medium">Estimated Pomos:</span>
+                          <span className="text-[10px] text-zinc-400 block">
+                            0 = No target set
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateTask(task.id, {
+                                estimatedPomos: Math.max(0, (task.estimatedPomos || 0) - 1),
+                              })
+                            }
+                            className="w-6 h-6 rounded border border-zinc-200 text-zinc-600 hover:bg-zinc-100 flex items-center justify-center text-xs font-bold"
+                          >
+                            -
+                          </button>
+                          <span className="w-6 text-center text-xs font-bold font-mono-num text-zinc-900">
+                            {task.estimatedPomos || 0}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateTask(task.id, {
+                                estimatedPomos: (task.estimatedPomos || 0) + 1,
+                              })
+                            }
+                            className="w-6 h-6 rounded border border-zinc-200 text-zinc-600 hover:bg-zinc-100 flex items-center justify-center text-xs font-bold"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
 
               <button
                 onClick={() =>
@@ -365,6 +497,25 @@ export const TaskDetailPane: React.FC = () => {
                 onChange={(e) =>
                   updateTask(task.id, {
                     durationMinutes: e.target.value ? Number(e.target.value) : undefined,
+                  })
+                }
+                className="w-full px-2 py-1 rounded-md border border-zinc-200/90 bg-white text-xs font-mono-num"
+              />
+            </div>
+
+            <div>
+              <label className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
+                <Timer className="w-3 h-3" strokeWidth={1.75} /> Est. Pomodoros
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={99}
+                value={task.estimatedPomos || ''}
+                placeholder="0 (None)"
+                onChange={(e) =>
+                  updateTask(task.id, {
+                    estimatedPomos: Math.max(0, parseInt(e.target.value, 10) || 0),
                   })
                 }
                 className="w-full px-2 py-1 rounded-md border border-zinc-200/90 bg-white text-xs font-mono-num"

@@ -420,6 +420,8 @@ export const TaskWorkspace: React.FC = () => {
     return (
       <div
         key={task.id}
+        data-task-id={task.id}
+        data-testid="task-item"
         onClick={() => setSelectedTaskId(task.id)}
         role="button"
         tabIndex={0}

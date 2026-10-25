@@ -223,7 +223,12 @@ export const PomodoroModule: React.FC = () => {
               <option value="">General Deep Work Session</option>
               {openTasks.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.title} ({t.completedPomos}/{t.estimatedPomos} Pomo)
+                  {t.title}{' '}
+                  {t.estimatedPomos > 0
+                    ? `(${t.completedPomos}/${t.estimatedPomos} Pomo)`
+                    : t.completedPomos > 0
+                      ? `(${t.completedPomos} Pomo)`
+                      : ''}
                 </option>
               ))}
             </select>

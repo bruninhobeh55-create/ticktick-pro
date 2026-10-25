@@ -117,6 +117,10 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
     await page.getByRole('button', { name: /Reset to Blank Workspace/i }).click();
     await page.getByRole('button', { name: /Yes, Start Blank/i }).click();
     await expect(page.getByText('All clear')).toBeVisible();
+
+    // Restore clean demo data for subsequent tests
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
   });
 
   test('All Modules Navigation (Calendar, Pomodoro, Habits, Matrix, Countdown, Statistics)', async ({
@@ -180,7 +184,8 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
       await expect(page.locator('h1', { hasText: 'All Tasks' })).toBeVisible();
 
       // Tap a task on mobile to slide up the Vaul-style TaskDetailPane bottom sheet
-      const firstTask = page.locator('div[role="button"]').first();
+      await page.waitForTimeout(350);
+      const firstTask = page.locator('[data-testid="task-item"]').first();
       await firstTask.click();
       const closeDetailBtn = page.locator('button[aria-label="Close Detail Pane"]');
       await expect(closeDetailBtn).toBeVisible();
@@ -230,6 +235,7 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
     if (!isMobile) {
       await page.locator('button[aria-label="Install App"]').click();
     } else {
+      page.on('console', msg => console.log('PAGE LOG:', msg.text()));
       const mobileNav = page.locator('nav[aria-label="Mobile Bottom Navigation"]');
       await mobileNav.locator('button[aria-label="More Modules and Settings"]').click();
       await page.getByRole('button', { name: 'Install', exact: true }).click();
@@ -325,5 +331,39 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
     // Reset stopwatch
     await page.locator('button[title="Reset Timer"]').click();
     await expect(page.locator('text=00:00').first()).toBeVisible();
+  });
+
+  test('Focus Mode Selection (Pomodoro vs Stopwatch) on Specific Task & Default 0 Est Pomos', async ({
+    page,
+    isMobile,
+  }) => {
+    await page.goto('/');
+
+    if (!isMobile) {
+      // 1. Create a brand new task
+      const quickInput = page.locator('input[placeholder*="Try NLP"]');
+      await quickInput.fill('Task Without Pomo Estimate');
+      await quickInput.press('Enter');
+
+      // 2. Click the task to open Detail Pane
+      await page.getByText('Task Without Pomo Estimate').first().click();
+
+      // Verify button says "Start Focus" (NOT "Focus (0/1 Pomo)")
+      const focusBtn = page.getByRole('button', { name: 'Start Focus' });
+      await expect(focusBtn).toBeVisible();
+
+      // 3. Click Focus button to open mode chooser
+      await focusBtn.click();
+      await expect(page.getByText('Choose Focus Mode')).toBeVisible();
+      await expect(page.getByText('Pomodoro Timer')).toBeVisible();
+      await expect(page.getByText('Stopwatch')).toBeVisible();
+
+      // 4. Select Stopwatch mode
+      await page.locator('button').filter({ hasText: 'Stopwatch' }).last().click();
+
+      // 5. Verify it navigated to Pomodoro module in Stopwatch mode focusing on this task
+      await expect(page.getByText('Focusing On Task')).toBeVisible();
+      await expect(page.locator('select').filter({ hasText: 'Task Without Pomo Estimate' })).toBeVisible();
+    }
   });
 });

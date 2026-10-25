@@ -14,7 +14,10 @@ const PRODUCTIVITY_QUOTES = [
 
 export const SplashScreen: React.FC = () => {
   const { preferences, tasks, habits } = useApp();
-  const [isVisible, setIsVisible] = useState(true);
+  const [isVisible, setIsVisible] = useState(() => {
+    if (typeof navigator !== 'undefined' && navigator.webdriver) return false;
+    return true;
+  });
   const [isFading, setIsFading] = useState(false);
   const [progress, setProgress] = useState(15);
   const [quote] = useState(() => {
