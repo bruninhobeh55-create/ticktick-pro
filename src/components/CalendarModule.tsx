@@ -118,6 +118,11 @@ export const CalendarModule: React.FC = () => {
   const [resizePreview, setResizePreview] = useState<{ taskId: string; dur: number } | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const resizeRef = useRef<ResizeState | null>(null);
+  const createRef = useRef<{ dateStr: string; startMin: number; endMin: number } | null>(null);
+  const suppressClickRef = useRef(false);
+  const [createPreview, setCreatePreview] = useState<{ dateStr: string; startMin: number; endMin: number } | null>(null);
+  const [createModal, setCreateModal] = useState<{ dateStr: string; startMin: number; endMin: number } | null>(null);
+  const [createTitle, setCreateTitle] = useState('');
 
   const today = startOfToday();
   const todayStr = format(today, 'yyyy-MM-dd');
@@ -388,6 +393,69 @@ export const CalendarModule: React.FC = () => {
 
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
+  };
+
+  // ---------- Criar tarefa clicando e arrastando na grade ----------
+
+  const slotPointerRatio = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    return Math.min(0.999, Math.max(0, (e.clientY - rect.top) / rect.height));
+  };
+
+  const startCreateDrag = (e: React.MouseEvent<HTMLDivElement>, dateStr: string, hr: number) => {
+    if (e.button !== 0 || e.target !== e.currentTarget) return;
+    e.preventDefault();
+    const ratio = slotPointerRatio(e);
+    const startMin = hr * 60 + Math.floor((ratio * 60) / SNAP_MINUTES) * SNAP_MINUTES;
+    const initial = { dateStr, startMin, endMin: startMin + SNAP_MINUTES };
+    createRef.current = initial;
+    setCreatePreview(initial);
+
+    const onUp = () => {
+      window.removeEventListener('mouseup', onUp);
+      const cur = createRef.current;
+      createRef.current = null;
+      setCreatePreview(null);
+      if (cur && cur.endMin > cur.startMin + SNAP_MINUTES) {
+        suppressClickRef.current = true;
+        setTimeout(() => {
+          suppressClickRef.current = false;
+        }, 0);
+        setCreateModal(cur);
+        setCreateTitle('');
+      }
+    };
+    window.addEventListener('mouseup', onUp);
+  };
+
+  const moveCreateDrag = (e: React.MouseEvent<HTMLDivElement>, dateStr: string, hr: number) => {
+    const cur = createRef.current;
+    if (!cur || cur.dateStr !== dateStr) return;
+    const ratio = slotPointerRatio(e);
+    let endMin = hr * 60 + (Math.floor((ratio * 60) / SNAP_MINUTES) + 1) * SNAP_MINUTES;
+    endMin = Math.min(endMin, dayRange.endHour * 60);
+    endMin = Math.max(endMin, cur.startMin + SNAP_MINUTES);
+    if (endMin === cur.endMin) return;
+    const next = { ...cur, endMin };
+    createRef.current = next;
+    setCreatePreview(next);
+  };
+
+  const handleCreateFromDrag = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!createModal || !createTitle.trim()) return;
+    addTask({
+      title: createTitle.trim(),
+      dueDate: createModal.dateStr,
+      startDate: createModal.dateStr,
+      startTime: minutesToTime(createModal.startMin),
+      endTime: minutesToTime(createModal.endMin),
+      durationMinutes: createModal.endMin - createModal.startMin,
+      isAllDay: false,
+      listId: 'inbox',
+    });
+    setCreateModal(null);
+    setCreateTitle('');
   };
 
   // ---------- Criação rápida ----------
@@ -975,7 +1043,11 @@ export const CalendarModule: React.FC = () => {
                               return (
                                 <div
                                   key={slotKey}
-                                  onClick={() => setQuickCellDate(dStr)}
+                                  onClick={() => {
+                                    if (!suppressClickRef.current) setQuickCellDate(dStr);
+                                  }}
+                                  onMouseDown={(e) => startCreateDrag(e, dStr, hr)}
+                                  onMouseMove={(e) => moveCreateDrag(e, dStr, hr)}
                                   onDragOver={(e) => handleSlotDragOver(e, slotKey)}
                                   onDrop={(e) => handleSlotDrop(e, dStr, hr)}
                                   className={`p-1 border-r border-zinc-100 space-y-1 cursor-pointer min-w-0 transition-colors ${
@@ -984,6 +1056,22 @@ export const CalendarModule: React.FC = () => {
                                       : 'hover:bg-zinc-50/60'
                                   }`}
                                 >
+                                  {createPreview &&
+                                    createPreview.dateStr === dStr &&
+                                    createPreview.startMin >= hr * 60 &&
+                                    createPreview.startMin < hr * 60 + 60 && (
+                                      <div
+                                        style={{
+                                          minHeight: Math.max(
+                                            rowHeight - 8,
+                                            ((createPreview.endMin - createPreview.startMin) / 60) * rowHeight - 8
+                                          ),
+                                        }}
+                                        className="rounded-[4px] bg-blue-100/80 border border-blue-400 px-2 py-1 text-[10px] font-mono-num text-blue-900 pointer-events-none"
+                                      >
+                                        {minutesToTime(createPreview.startMin)} – {minutesToTime(createPreview.endMin)}
+                                      </div>
+                                    )}
                                   {slotEvents.map((ev) => (
                                     <div
                                       key={ev.id}
@@ -1410,6 +1498,49 @@ export const CalendarModule: React.FC = () => {
               );
             })()}
           </div>
+        </div>
+      )}
+
+      {createModal && (
+        <div
+          onClick={() => setCreateModal(null)}
+          className="fixed inset-0 z-50 bg-zinc-950/40 backdrop-blur-[2px] flex items-center justify-center p-4 animate-backdrop"
+        >
+          <form
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={handleCreateFromDrag}
+            className="surface-floating rounded-xl w-full max-w-sm p-5 space-y-3 animate-modal"
+          >
+            <h3 className="text-sm font-semibold text-zinc-900">Nova tarefa</h3>
+            <p className="text-[11px] font-mono-num text-zinc-500">
+              {format(parseISO(createModal.dateStr), 'dd/MM/yyyy')} · {minutesToTime(createModal.startMin)} –{' '}
+              {minutesToTime(createModal.endMin)} ({createModal.endMin - createModal.startMin} min)
+            </p>
+            <input
+              type="text"
+              autoFocus
+              required
+              value={createTitle}
+              onChange={(e) => setCreateTitle(e.target.value)}
+              placeholder="Título da tarefa..."
+              className="w-full px-3 py-2 text-xs rounded-lg border border-zinc-300 focus:outline-none focus:border-zinc-900"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setCreateModal(null)}
+                className="px-3 py-1.5 rounded-lg text-xs text-zinc-600 hover:bg-zinc-100"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-zinc-900 text-white hover:bg-zinc-800"
+              >
+                Criar
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
