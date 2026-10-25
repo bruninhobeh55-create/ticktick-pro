@@ -40,6 +40,7 @@ const MAX_MONTH_VISIBLE = 3;
 const MAX_ALLDAY_VISIBLE = 2;
 const BASE_ROW_HEIGHT = 54;
 const SNAP_MINUTES = 15;
+const MIN_DURATION = 15;
 const RANGE_KEY = 'ticktick_calendar_range';
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -49,6 +50,16 @@ const clampZoom = (v: number) => Math.min(2.5, Math.max(0.5, Math.round(v * 10) 
 interface DayRange {
   startHour: number;
   endHour: number;
+}
+
+interface ResizeState {
+  taskId: string;
+  startY: number;
+  startDur: number;
+  dur: number;
+  rowH: number;
+  startMin: number;
+  maxDur: number;
 }
 
 function loadDayRange(): DayRange {
@@ -100,12 +111,13 @@ export const CalendarModule: React.FC = () => {
   const [expandedDayNewTitle, setExpandedDayNewTitle] = useState('');
   const [selectedCellDate, setSelectedCellDate] = useState<string | null>(null);
 
-  // Novos estados: horário visível, zoom e arrastar
   const [dayRange, setDayRange] = useState<DayRange>(() => loadDayRange());
   const [zoom, setZoom] = useState<number>(1);
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
   const [dropKey, setDropKey] = useState<string | null>(null);
+  const [resizePreview, setResizePreview] = useState<{ taskId: string; dur: number } | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
+  const resizeRef = useRef<ResizeState | null>(null);
 
   const today = startOfToday();
   const todayStr = format(today, 'yyyy-MM-dd');
@@ -134,7 +146,6 @@ export const CalendarModule: React.FC = () => {
     [calendarSubscriptions]
   );
 
-  // Salva o horário visível no navegador
   useEffect(() => {
     try {
       localStorage.setItem(RANGE_KEY, JSON.stringify(dayRange));
@@ -155,6 +166,13 @@ export const CalendarModule: React.FC = () => {
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
+  // Limpa os listeners se o componente sair da tela durante um ajuste
+  useEffect(() => {
+    return () => {
+      resizeRef.current = null;
+    };
   }, []);
 
   const sortDayTasks = (dayTaskList: Task[]): Task[] => {
@@ -201,9 +219,12 @@ export const CalendarModule: React.FC = () => {
     [cursorDate]
   );
 
-  // Horas visíveis conforme o horário escolhido na barra
   const hours = useMemo(
-    () => Array.from({ length: dayRange.endHour - dayRange.startHour }, (_, i) => dayRange.startHour + i),
+    () =>
+      Array.from(
+        { length: dayRange.endHour - dayRange.startHour },
+        (_, i) => dayRange.startHour + i
+      ),
     [dayRange]
   );
 
@@ -236,7 +257,6 @@ export const CalendarModule: React.FC = () => {
     },
   });
 
-  // Move a tarefa para um dia (visão mensal e cabeçalho "dia inteiro")
   const scheduleTaskAllDay = (taskId: string, dateStr: string) => {
     updateTask(
       taskId,
@@ -251,7 +271,6 @@ export const CalendarModule: React.FC = () => {
     );
   };
 
-  // Agenda a tarefa em um dia e horário, mantendo a duração
   const scheduleTaskAt = (taskId: string, dateStr: string, timeStr: string) => {
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
@@ -278,7 +297,6 @@ export const CalendarModule: React.FC = () => {
     if (dropKey !== key) setDropKey(key);
   };
 
-  // Soltou em um quadradinho de hora: calcula os minutos pela posição do mouse
   const handleSlotDrop = (e: React.DragEvent<HTMLDivElement>, dateStr: string, hour: number) => {
     e.preventDefault();
     const taskId = e.dataTransfer.getData('text/plain') || draggingTaskId;
@@ -313,6 +331,63 @@ export const CalendarModule: React.FC = () => {
     } else {
       scheduleTaskAllDay(taskId, dateStr);
     }
+  };
+
+  // ---------- Alterar duração (bolinha na borda inferior) ----------
+
+  const startResize = (
+    e: React.MouseEvent<HTMLDivElement>,
+    task: Task,
+    startMin: number,
+    rowH: number
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const startDur = task.durationMinutes || 60;
+    const maxDur = Math.max(MIN_DURATION, dayRange.endHour * 60 - startMin);
+
+    resizeRef.current = {
+      taskId: task.id,
+      startY: e.clientY,
+      startDur,
+      dur: startDur,
+      rowH,
+      startMin,
+      maxDur,
+    };
+    setResizePreview({ taskId: task.id, dur: startDur });
+
+    const onMove = (ev: MouseEvent) => {
+      const r = resizeRef.current;
+      if (!r) return;
+      const deltaMin = ((ev.clientY - r.startY) / r.rowH) * 60;
+      let dur = Math.round((r.startDur + deltaMin) / SNAP_MINUTES) * SNAP_MINUTES;
+      dur = Math.max(MIN_DURATION, Math.min(dur, r.maxDur));
+      r.dur = dur;
+      setResizePreview({ taskId: r.taskId, dur });
+    };
+
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      const r = resizeRef.current;
+      resizeRef.current = null;
+      setResizePreview(null);
+      if (r && r.dur !== r.startDur) {
+        updateTask(
+          r.taskId,
+          {
+            durationMinutes: r.dur,
+            endTime: minutesToTime(r.startMin + r.dur),
+          },
+          `Duração alterada para ${r.dur} min`
+        );
+      }
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
   };
 
   // ---------- Criação rápida ----------
@@ -465,7 +540,10 @@ export const CalendarModule: React.FC = () => {
                 value={dayRange.startHour}
                 onChange={(e) => {
                   const v = Number(e.target.value);
-                  setDayRange((prev) => ({ startHour: v, endHour: Math.max(v + 1, prev.endHour) }));
+                  setDayRange((prev) => ({
+                    startHour: v,
+                    endHour: Math.max(v + 1, prev.endHour),
+                  }));
                 }}
                 className="px-1.5 py-0.5 rounded-md border border-zinc-300 bg-white font-mono-num"
               >
@@ -480,7 +558,10 @@ export const CalendarModule: React.FC = () => {
                 value={dayRange.endHour}
                 onChange={(e) => {
                   const v = Number(e.target.value);
-                  setDayRange((prev) => ({ startHour: prev.startHour, endHour: Math.max(v, prev.startHour + 1) }));
+                  setDayRange((prev) => ({
+                    startHour: prev.startHour,
+                    endHour: Math.max(v, prev.startHour + 1),
+                  }));
                 }}
                 className="px-1.5 py-0.5 rounded-md border border-zinc-300 bg-white font-mono-num"
               >
@@ -493,7 +574,9 @@ export const CalendarModule: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-1.5 text-[11px] text-zinc-600">
-              <span className="hidden md:inline text-zinc-400 mr-1">Ctrl + roda do mouse para zoom</span>
+              <span className="hidden md:inline text-zinc-400 mr-1">
+                Ctrl + roda do mouse para zoom
+              </span>
               <button
                 type="button"
                 onClick={() => setZoom((z) => clampZoom(z - 0.1))}
@@ -917,6 +1000,17 @@ export const CalendarModule: React.FC = () => {
                                     const accentColor = getTaskAccentColor(t);
                                     const isSelectedHere =
                                       selectedTaskId === t.id && selectedCellDate === dStr;
+                                    const isResizing = resizePreview?.taskId === t.id;
+                                    const shownDur =
+                                      isResizing && resizePreview
+                                        ? resizePreview.dur
+                                        : t.durationMinutes || 60;
+                                    const startMin =
+                                      Number(t.startTime!.slice(0, 2)) * 60 +
+                                      Number(t.startTime!.slice(3, 5));
+                                    const canResize =
+                                      isSelectedHere && t.status !== 'completed';
+
                                     return (
                                       <div
                                         key={t.id}
@@ -926,8 +1020,13 @@ export const CalendarModule: React.FC = () => {
                                           setSelectedCellDate(dStr);
                                           setSelectedTaskId(t.id);
                                         }}
-                                        style={{ borderLeftColor: accentColor }}
-                                        className={`px-2 py-1 rounded-[4px] border border-l-[3px] text-[11px] font-medium cursor-grab active:cursor-grabbing transition-colors ${
+                                        style={{
+                                          borderLeftColor: accentColor,
+                                          minHeight: isResizing
+                                            ? Math.max(rowHeight - 8, (shownDur / 60) * rowHeight)
+                                            : undefined,
+                                        }}
+                                        className={`relative px-2 py-1 rounded-[4px] border border-l-[3px] text-[11px] font-medium cursor-grab active:cursor-grabbing transition-colors ${
                                           isSelectedHere
                                             ? 'bg-blue-50 border-blue-300 text-blue-950'
                                             : t.priority === 5
@@ -940,9 +1039,13 @@ export const CalendarModule: React.FC = () => {
                                         <div className="flex items-center justify-between text-[10px] font-mono-num text-zinc-500">
                                           <span>
                                             {t.startTime}
-                                            {t.endTime ? ` – ${t.endTime}` : ''}
+                                            {isResizing
+                                              ? ` – ${minutesToTime(startMin + shownDur)}`
+                                              : t.endTime
+                                                ? ` – ${t.endTime}`
+                                                : ''}
                                           </span>
-                                          {t.durationMinutes && <span>{t.durationMinutes}m</span>}
+                                          <span>{shownDur}m</span>
                                         </div>
                                         <div className="truncate font-semibold flex items-center justify-between gap-1">
                                           <span className="truncate">{t.title}</span>
@@ -950,6 +1053,21 @@ export const CalendarModule: React.FC = () => {
                                             <Repeat className="w-2.5 h-2.5 shrink-0 text-zinc-400" />
                                           )}
                                         </div>
+
+                                        {/* Bolinha para alterar a duração */}
+                                        {canResize && (
+                                          <div
+                                            role="slider"
+                                            aria-label="Alterar duração da tarefa"
+                                            title="Arraste para aumentar ou diminuir a duração"
+                                            onMouseDown={(e) =>
+                                              startResize(e, t, startMin, rowHeight)
+                                            }
+                                            onClick={(e) => e.stopPropagation()}
+                                            onDragStart={(e) => e.preventDefault()}
+                                            className="absolute left-1/2 -translate-x-1/2 -bottom-1.5 w-3.5 h-3.5 rounded-full bg-blue-600 border-2 border-white shadow cursor-ns-resize z-10"
+                                          />
+                                        )}
                                       </div>
                                     );
                                   })}
