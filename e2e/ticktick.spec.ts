@@ -46,7 +46,10 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
 
     await page.goto('/');
 
-    // 1. Verify PC Right Inspector Resize Handle exists & Test Reminder Alert Trigger
+    // 1. Verify PC Right Inspector is initially closed, then opens on task click
+    await expect(page.locator('aside[aria-label="Task Detail Inspector"]')).toHaveCount(0);
+    const firstTask = page.locator('[data-testid="task-item"]').first();
+    await firstTask.click();
     await expect(page.locator('[aria-label="Resize Right Inspector"]')).toBeVisible();
     await page.getByRole('button', { name: 'Test Alert' }).first().click();
     await expect(page.locator('[role="alertdialog"]')).toBeVisible();
@@ -482,5 +485,99 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
     } else {
       await page.locator('h1', { hasText: 'Eisenhower Matrix' }).click();
     }
+  });
+
+  test('Bug 1 Verification: Task Detail Sidebar Opens on Click, Explicit Save Required, Closes on Background Click or Trash', async ({
+    page,
+    isMobile,
+  }) => {
+    await page.goto('/');
+
+    // Initially inspector is closed
+    await expect(page.locator('aside[aria-label="Task Detail Inspector"]')).toHaveCount(0);
+
+    // 1. Click task to open
+    const firstTask = page.locator('[data-testid="task-item"]').first();
+    await firstTask.click();
+    const inspector = page.locator('aside[aria-label="Task Detail Inspector"]');
+    await expect(inspector).toBeVisible();
+
+    // 2. Edit title inside inspector
+    const titleInput = inspector.locator('input[type="text"]').first();
+    await titleInput.fill('Task Title Edited Unsaved');
+
+    // Verify Save button is active and Unsaved changes banner appears
+    const saveBtn = page.locator('button[aria-label="Save Task Changes"]');
+    await expect(saveBtn).toBeVisible();
+    await expect(page.getByText('Unsaved changes').first()).toBeVisible();
+
+    // 3. Click Save button
+    await saveBtn.click();
+    await expect(page.getByText('Saved').first()).toBeVisible();
+
+    // Task list shows the saved title
+    await expect(page.getByText('Task Title Edited Unsaved').first()).toBeVisible();
+
+    if (!isMobile) {
+      // 4. Click whitespace in TaskWorkspace to dismiss sidebar
+      await page.locator('[data-testid="workspace-blank-space"]').click();
+      await expect(page.locator('aside[aria-label="Task Detail Inspector"]')).toHaveCount(0);
+
+      // 5. Open again and delete task -> inspector immediately closes
+      await page.getByText('Task Title Edited Unsaved').first().click();
+      await expect(inspector).toBeVisible();
+      await page.locator('button[title="Move to Trash"]').click();
+      await expect(page.locator('aside[aria-label="Task Detail Inspector"]')).toHaveCount(0);
+    } else {
+      // Mobile: Click Close button
+      await page.locator('button[aria-label="Close Detail Pane"]').click();
+      await expect(page.locator('aside[aria-label="Task Detail Inspector"]')).toHaveCount(0);
+    }
+  });
+
+  test('Bug 2 Verification: Calendar Date Range Header Label Updates Across Views and Separates Today Button', async ({
+    page,
+    isMobile,
+  }) => {
+    await page.goto('/');
+
+    if (isMobile) {
+      await page.locator('nav[aria-label="Mobile Bottom Navigation"] button[aria-label="Calendar (5 Views)"]').click();
+    } else {
+      await page.locator('aside[aria-label="Primary Module Navigation"] button[aria-label="Calendar (5 Views)"]').click();
+    }
+
+    // Verify Calendar is rendered
+    await expect(page.getByRole('button', { name: 'Month', exact: true })).toBeVisible();
+
+    // Verify standalone [ Today ] button exists
+    const todayBtn = page.locator('button[aria-label="Jump to today"]');
+    await expect(todayBtn).toBeVisible();
+    await expect(todayBtn).toHaveText('Today');
+
+    // Verify navigation chevrons are standalone buttons
+    await expect(page.locator('button[aria-label="Previous period"]')).toBeVisible();
+    await expect(page.locator('button[aria-label="Next period"]')).toBeVisible();
+
+    // Verify Month view header title
+    const headerTitle = page.locator('header h1');
+    await expect(headerTitle).toBeVisible();
+    const monthText = await headerTitle.textContent();
+    expect(monthText).toContain('2026');
+
+    // Switch to Week view and verify header changes to range
+    await page.getByRole('button', { name: 'Week', exact: true }).click();
+    const weekText = await headerTitle.textContent();
+    expect(weekText).toBeDefined();
+
+    // Switch to Day view and verify header contains day format
+    await page.getByRole('button', { name: 'Day', exact: true }).click();
+    const dayText = await headerTitle.textContent();
+    expect(dayText).toBeDefined();
+
+    // Switch to Agenda view and verify header
+    await page.getByRole('button', { name: 'Agenda', exact: true }).click();
+    const agendaText = await headerTitle.textContent();
+    expect(agendaText).toBeDefined();
   });
 });

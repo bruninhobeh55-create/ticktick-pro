@@ -130,6 +130,35 @@ export const CalendarModule: React.FC = () => {
     setQuickCellDate(null);
   };
 
+  const headerDateLabel = useMemo(() => {
+    if (subView === 'month') {
+      return format(cursorDate, 'MMMM yyyy');
+    }
+    if (subView === 'week') {
+      const start = startOfWeek(cursorDate);
+      const end = endOfWeek(cursorDate);
+      if (format(start, 'yyyy') !== format(end, 'yyyy')) {
+        return `${format(start, 'MMM d, yyyy')} – ${format(end, 'MMM d, yyyy')}`;
+      }
+      if (format(start, 'MMM') !== format(end, 'MMM')) {
+        return `${format(start, 'MMM d')} – ${format(end, 'MMM d, yyyy')}`;
+      }
+      return `${format(start, 'MMMM d')} – ${format(end, 'd, yyyy')}`;
+    }
+    if (subView === 'multiday') {
+      const end = addDays(cursorDate, 2);
+      return `${format(cursorDate, 'MMM d')} – ${format(end, 'MMM d, yyyy')}`;
+    }
+    if (subView === 'day') {
+      return format(cursorDate, 'EEEE, MMMM d, yyyy');
+    }
+    if (subView === 'agenda') {
+      const end = addDays(cursorDate, 6);
+      return `${format(cursorDate, 'MMM d')} – ${format(end, 'MMM d, yyyy')}`;
+    }
+    return format(cursorDate, 'MMMM yyyy');
+  }, [cursorDate, subView]);
+
   return (
     <div className="flex-1 flex h-full min-w-0 bg-white">
       <div className="flex-1 flex flex-col h-full min-w-0">
@@ -139,31 +168,41 @@ export const CalendarModule: React.FC = () => {
             <div className="flex items-center gap-1.5 min-w-0">
               <CalendarIcon className="w-4 h-4 text-zinc-700 shrink-0" strokeWidth={1.75} />
               <h1 className="text-sm font-semibold text-zinc-900 tracking-tight font-mono-num truncate">
-                {format(cursorDate, subView === 'day' ? 'EEE, MMM d, yyyy' : 'MMMM yyyy')}
+                {headerDateLabel}
               </h1>
             </div>
 
-            <div className="flex items-center gap-0.5 bg-zinc-100 rounded-lg p-0.5 border border-zinc-200/70 shrink-0">
+            <div className="flex items-center gap-1.5 shrink-0">
               <button
-                onClick={() => handleNavigate(-1)}
-                aria-label="Previous period"
-                className="p-1 rounded-md hover:bg-white text-zinc-600"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" strokeWidth={1.75} />
-              </button>
-              <button
+                type="button"
+                aria-label="Jump to today"
                 onClick={() => setCursorDate(today)}
-                className="px-2 py-0.5 text-xs font-semibold text-zinc-700 hover:bg-white rounded-md"
+                className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition-colors ${
+                  isSameDay(cursorDate, today)
+                    ? 'bg-zinc-100 text-zinc-800 border-zinc-200'
+                    : 'bg-white text-zinc-700 hover:text-zinc-900 hover:bg-zinc-50 border-zinc-300 shadow-2xs font-bold'
+                }`}
               >
                 Today
               </button>
-              <button
-                onClick={() => handleNavigate(1)}
-                aria-label="Next period"
-                className="p-1 rounded-md hover:bg-white text-zinc-600"
-              >
-                <ChevronRight className="w-3.5 h-3.5" strokeWidth={1.75} />
-              </button>
+              <div className="flex items-center gap-0.5 bg-zinc-100 rounded-lg p-0.5 border border-zinc-200/70">
+                <button
+                  type="button"
+                  onClick={() => handleNavigate(-1)}
+                  aria-label="Previous period"
+                  className="p-1 rounded-md hover:bg-white text-zinc-600 transition-colors"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" strokeWidth={1.75} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleNavigate(1)}
+                  aria-label="Next period"
+                  className="p-1 rounded-md hover:bg-white text-zinc-600 transition-colors"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" strokeWidth={1.75} />
+                </button>
+              </div>
             </div>
           </div>
 

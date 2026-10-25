@@ -425,7 +425,10 @@ export const TaskWorkspace: React.FC = () => {
         key={task.id}
         data-task-id={task.id}
         data-testid="task-item"
-        onClick={() => setSelectedTaskId(task.id)}
+        onClick={(e) => {
+          e.stopPropagation();
+          setSelectedTaskId(task.id);
+        }}
         role="button"
         tabIndex={0}
         onKeyDown={(e) => {
@@ -611,9 +614,17 @@ export const TaskWorkspace: React.FC = () => {
   };
 
   return (
-    <main className={`flex-1 flex flex-col h-full min-w-0 ${bgStyleClass}`}>
+    <main
+      onClick={() => {
+        if (selectedTaskId) setSelectedTaskId(null);
+      }}
+      className={`flex-1 flex flex-col h-full min-w-0 ${bgStyleClass}`}
+    >
       {/* Top Toolbar */}
-      <header className="h-12 sm:h-13 px-3 sm:px-4 border-b border-zinc-200/80 flex items-center justify-between gap-2 bg-white/90 backdrop-blur-xs shrink-0">
+      <header
+        onClick={(e) => e.stopPropagation()}
+        className="h-12 sm:h-13 px-3 sm:px-4 border-b border-zinc-200/80 flex items-center justify-between gap-2 bg-white/90 backdrop-blur-xs shrink-0"
+      >
         <div className="flex items-center gap-2 min-w-0">
           <button
             onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
@@ -767,7 +778,10 @@ export const TaskWorkspace: React.FC = () => {
 
       {/* Smart NLP Quick-Add Bar */}
       {sidebarSelection.id !== 'trash' && sidebarSelection.id !== 'completed' && (
-        <div className="px-3 sm:px-4 pt-2.5 sm:pt-3 pb-2 shrink-0">
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="px-3 sm:px-4 pt-2.5 sm:pt-3 pb-2 shrink-0"
+        >
           <form onSubmit={handleQuickSubmit} className="relative">
             <div className="flex items-center gap-1.5 sm:gap-2 px-3 py-2 rounded-lg bg-zinc-100/80 border border-zinc-200/90 focus-within:bg-white focus-within:border-zinc-900 focus-within:ring-2 focus-within:ring-zinc-900/5">
               <Plus className="w-4 h-4 text-zinc-400 shrink-0" strokeWidth={1.75} />
@@ -1059,6 +1073,13 @@ export const TaskWorkspace: React.FC = () => {
                 )}
               </section>
             )}
+
+            {/* Clickable blank workspace space to deselect task */}
+            <div
+              data-testid="workspace-blank-space"
+              className="min-h-32 flex-1 cursor-default"
+              onClick={() => setSelectedTaskId(null)}
+            />
           </div>
         )}
 
@@ -1115,7 +1136,10 @@ export const TaskWorkspace: React.FC = () => {
                 return (
                   <div
                     key={task.id}
-                    onClick={() => setSelectedTaskId(task.id)}
+                    onClick={(e) => {
+          e.stopPropagation();
+          setSelectedTaskId(task.id);
+        }}
                     className={`p-3 rounded-lg bg-white border cursor-pointer ${
                       selectedTaskId === task.id
                         ? 'border-zinc-900 ring-1 ring-zinc-900/10'
@@ -1290,7 +1314,10 @@ export const TaskWorkspace: React.FC = () => {
                 return (
                   <div
                     key={task.id}
-                    onClick={() => setSelectedTaskId(task.id)}
+                    onClick={(e) => {
+          e.stopPropagation();
+          setSelectedTaskId(task.id);
+        }}
                     className="grid grid-cols-[240px_repeat(10,minmax(56px,1fr))] border-b border-zinc-100 items-center hover:bg-zinc-50/70 cursor-pointer"
                   >
                     <div className="px-3 py-2.5 border-r border-zinc-200/80 flex items-center justify-between gap-2 truncate">

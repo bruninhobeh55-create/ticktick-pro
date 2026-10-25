@@ -251,10 +251,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     kind: 'smart',
     id: 'today',
   });
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(() => {
-    if (typeof window !== 'undefined' && window.innerWidth < 1024) return null;
-    return 'task-1';
-  });
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
     if (typeof window !== 'undefined' && window.innerWidth < 768) return true;
     return false;
@@ -990,9 +987,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteTask = (id: string, permanent = false) => {
     const target = tasks.find((t) => t.id === id);
+    if (selectedTaskId === id) setSelectedTaskId(null);
     if (permanent) {
       setTasks((prev) => prev.filter((t) => t.id !== id));
-      if (selectedTaskId === id) setSelectedTaskId(null);
       pushToast({ title: 'Task permanently deleted', kind: 'info' });
     } else {
       updateTask(id, { status: 'trash' }, 'Moved task to Trash');

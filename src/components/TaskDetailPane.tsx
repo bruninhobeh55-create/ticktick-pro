@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Activity,
   Bell,
@@ -20,13 +20,56 @@ import {
   Play,
   Plus,
   Repeat,
+  Save,
   Timer,
   Trash2,
   User,
   X,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { Priority } from '../types';
+import { Priority, Task } from '../types';
+
+interface TaskDraft {
+  title: string;
+  content: string;
+  priority: Priority;
+  listId: string;
+  startDate: string;
+  dueDate: string;
+  startTime: string;
+  endTime: string;
+  durationMinutes: number | '';
+  estimatedPomos: number;
+  recurrenceRule: string;
+  assignee: string;
+  reminders: string[];
+  constantReminder: boolean;
+  emailReminder: boolean;
+  locationReminder: string;
+  tags: string[];
+  isNote: boolean;
+}
+
+const getInitialDraft = (t: Task): TaskDraft => ({
+  title: t.title ?? '',
+  content: t.content ?? '',
+  priority: t.priority ?? 0,
+  listId: t.listId ?? 'inbox',
+  startDate: t.startDate ?? '',
+  dueDate: t.dueDate ?? '',
+  startTime: t.startTime ?? '',
+  endTime: t.endTime ?? '',
+  durationMinutes: t.durationMinutes ?? '',
+  estimatedPomos: t.estimatedPomos ?? 0,
+  recurrenceRule: t.recurrenceRule ?? '',
+  assignee: t.assignee ?? '',
+  reminders: t.reminders ? [...t.reminders] : [],
+  constantReminder: !!t.constantReminder,
+  emailReminder: !!t.emailReminder,
+  locationReminder: t.locationReminder ?? '',
+  tags: t.tags ? [...t.tags] : [],
+  isNote: !!t.isNote,
+});
 
 export const TaskDetailPane: React.FC = () => {
   const {
@@ -64,6 +107,23 @@ export const TaskDetailPane: React.FC = () => {
   const [isResizing, setIsResizing] = useState(false);
   const [isSubtasksCompletedCollapsed, setIsSubtasksCompletedCollapsed] = useState(false);
   const [showFocusMenu, setShowFocusMenu] = useState(false);
+  const [draft, setDraft] = useState<TaskDraft | null>(null);
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [isSavedNotice, setIsSavedNotice] = useState(false);
+
+  const task = tasks.find((t) => t.id === selectedTaskId);
+
+  // Synchronize draft when task changes
+  useEffect(() => {
+    if (task) {
+      setDraft(getInitialDraft(task));
+      setActiveTaskId(task.id);
+      setIsSavedNotice(false);
+    } else {
+      setDraft(null);
+      setActiveTaskId(null);
+    }
+  }, [task?.id]);
 
   const handleMouseDownResize = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -86,35 +146,99 @@ export const TaskDetailPane: React.FC = () => {
     window.addEventListener('mouseup', onMouseUp);
   };
 
-  const task = tasks.find((t) => t.id === selectedTaskId);
+  const currentDraft = draft && task && activeTaskId === task.id ? draft : task ? getInitialDraft(task) : null;
 
-  if (!task) {
-    return (
-      <aside
-        style={{ '--right-pane-width': `${rightPaneWidth}px` } as React.CSSProperties}
-        className="hidden xl:flex lg:w-[var(--right-pane-width)] relative shrink-0 border-l border-zinc-200/80 bg-zinc-50/40 flex-col items-center justify-center p-6 text-center select-none"
-      >
-        <div
-          onMouseDown={handleMouseDownResize}
-          title="Drag to resize right inspector"
-          aria-label="Resize Right Inspector"
-          className="hidden lg:flex absolute inset-y-0 -left-1 w-2.5 cursor-col-resize items-center justify-center group z-20"
-        >
-          <div
-            className={`w-[2px] h-10 rounded-full transition-colors ${
-              isResizing ? 'bg-blue-600' : 'bg-transparent group-hover:bg-zinc-400'
-            }`}
-          />
-        </div>
-        <div className="w-10 h-10 rounded-xl bg-zinc-100 border border-zinc-200/80 text-zinc-400 flex items-center justify-center mb-3">
-          <FileText className="w-5 h-5" strokeWidth={1.75} />
-        </div>
-        <p className="text-xs font-semibold text-zinc-600">Select any task to inspect details</p>
-        <p className="text-[11px] text-zinc-400 mt-1 max-w-xs leading-relaxed">
-          Configure subtasks, Markdown notes, task duration, constant reminders, attachments, and activity logs.
-        </p>
-      </aside>
+  const isDirty = Boolean(
+    task &&
+      currentDraft &&
+      (currentDraft.title !== (task.title ?? '') ||
+        currentDraft.content !== (task.content ?? '') ||
+        currentDraft.priority !== (task.priority ?? 0) ||
+        currentDraft.listId !== (task.listId ?? 'inbox') ||
+        currentDraft.startDate !== (task.startDate ?? '') ||
+        currentDraft.dueDate !== (task.dueDate ?? '') ||
+        currentDraft.startTime !== (task.startTime ?? '') ||
+        currentDraft.endTime !== (task.endTime ?? '') ||
+        currentDraft.durationMinutes !== (task.durationMinutes ?? '') ||
+        currentDraft.estimatedPomos !== (task.estimatedPomos ?? 0) ||
+        currentDraft.recurrenceRule !== (task.recurrenceRule ?? '') ||
+        currentDraft.assignee !== (task.assignee ?? '') ||
+        currentDraft.constantReminder !== !!task.constantReminder ||
+        currentDraft.emailReminder !== !!task.emailReminder ||
+        currentDraft.locationReminder !== (task.locationReminder ?? '') ||
+        currentDraft.isNote !== !!task.isNote ||
+        currentDraft.reminders.length !== (task.reminders || []).length ||
+        !currentDraft.reminders.every((r, idx) => r === (task.reminders || [])[idx]) ||
+        currentDraft.tags.length !== (task.tags || []).length ||
+        !currentDraft.tags.every((tg, idx) => tg === (task.tags || [])[idx]))
+  );
+
+  const handleSave = () => {
+    if (!task || !currentDraft) return;
+    updateTask(
+      task.id,
+      {
+        title: currentDraft.title.trim() || 'Untitled Task',
+        content: currentDraft.content,
+        priority: currentDraft.priority,
+        listId: currentDraft.listId,
+        startDate: currentDraft.startDate || undefined,
+        dueDate: currentDraft.dueDate || undefined,
+        startTime: currentDraft.startTime || undefined,
+        endTime: currentDraft.endTime || undefined,
+        isAllDay: !currentDraft.startTime,
+        durationMinutes:
+          currentDraft.durationMinutes === ''
+            ? undefined
+            : Number(currentDraft.durationMinutes),
+        estimatedPomos: currentDraft.estimatedPomos,
+        recurrenceRule: currentDraft.recurrenceRule || undefined,
+        assignee: currentDraft.assignee || undefined,
+        reminders: currentDraft.reminders,
+        constantReminder: currentDraft.constantReminder,
+        emailReminder: currentDraft.emailReminder,
+        locationReminder: currentDraft.locationReminder || undefined,
+        tags: currentDraft.tags,
+        isNote: currentDraft.isNote,
+      },
+      'Saved task changes'
     );
+    setIsSavedNotice(true);
+    setTimeout(() => setIsSavedNotice(false), 2000);
+  };
+
+  const handleDiscard = () => {
+    if (task) {
+      setDraft(getInitialDraft(task));
+    }
+  };
+
+  const handleStartFocus = (mode: 'pomo' | 'stopwatch') => {
+    if (!task) return;
+    if (isDirty) {
+      handleSave();
+    }
+    setShowFocusMenu(false);
+    startTaskFocus(task.id, mode);
+  };
+
+  // Keyboard shortcut: Ctrl+S / Cmd+S to save, Escape to close
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        handleSave();
+      } else if (e.key === 'Escape') {
+        setSelectedTaskId(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  });
+
+  // If no task selected, completely hide inspector
+  if (!task || !currentDraft) {
+    return null;
   }
 
   const isDone = task.status === 'completed';
@@ -148,34 +272,23 @@ export const TaskDetailPane: React.FC = () => {
         >
           <div
             className={`w-[2px] h-10 rounded-full transition-colors ${
-              isResizing ? 'bg-blue-600' : 'bg-zinc-200/80 group-hover:bg-blue-600'
+              isResizing ? 'bg-blue-600' : 'bg-transparent group-hover:bg-zinc-400'
             }`}
           />
         </div>
-        {/* Mobile Vaul Drag Handle */}
-        <div
-          onClick={() => setSelectedTaskId(null)}
-          className="lg:hidden flex justify-center pt-2.5 pb-1 cursor-pointer shrink-0"
-        >
-          <div className="w-10 h-1 rounded-full bg-zinc-300" />
-        </div>
 
-        {/* Top Bar: Checkbox, List, Priority, Close */}
-        <div className="h-12 lg:h-13 px-3 sm:px-4 border-b border-zinc-200/80 flex items-center justify-between gap-2 shrink-0">
+        {/* Header: Status, List, Priority, Save button & Close button */}
+        <div className="min-h-12 px-3 sm:px-4 border-b border-zinc-200/80 flex items-center justify-between gap-1.5 shrink-0 bg-white">
           <div className="flex items-center gap-2 min-w-0">
+            {/* Status Checkbox */}
             <button
+              type="button"
+              aria-label={`Mark as ${isDone ? 'incomplete' : 'completed'}`}
               onClick={() => toggleTaskStatus(task.id)}
-              aria-label="Toggle task completion"
               className={`w-4 h-4 rounded-[5px] border-[1.5px] flex items-center justify-center shrink-0 ${
                 isDone
-                  ? 'bg-zinc-900 border-zinc-900 text-white'
-                  : task.priority === 5
-                    ? 'border-rose-500 text-rose-500'
-                    : task.priority === 3
-                      ? 'border-amber-500 text-amber-500'
-                      : task.priority === 1
-                        ? 'border-blue-500 text-blue-500'
-                        : 'border-zinc-300 text-zinc-400'
+                  ? 'bg-zinc-400 border-zinc-400 text-white'
+                  : 'border-zinc-400 hover:border-zinc-700'
               }`}
             >
               {isDone && <Check className="w-2.5 h-2.5 stroke-[2.75] animate-check" />}
@@ -184,9 +297,14 @@ export const TaskDetailPane: React.FC = () => {
             {/* List Selector */}
             <select
               aria-label="Task List"
-              value={task.listId}
-              onChange={(e) => updateTask(task.id, { listId: e.target.value }, 'Moved to another list')}
-              className="text-xs font-medium text-zinc-700 bg-zinc-100 px-2 py-1 rounded-md border border-zinc-200/70 focus:outline-none max-w-[110px] sm:max-w-[160px] truncate"
+              value={currentDraft.listId}
+              onChange={(e) =>
+                setDraft((d) => ({
+                  ...(d || getInitialDraft(task)),
+                  listId: e.target.value,
+                }))
+              }
+              className="text-xs font-medium text-zinc-700 bg-zinc-100 px-2 py-1 rounded-md border border-zinc-200/70 focus:outline-none max-w-[105px] sm:max-w-[140px] truncate"
             >
               <option value="inbox">Inbox</option>
               {lists.map((l) => (
@@ -197,29 +315,32 @@ export const TaskDetailPane: React.FC = () => {
             </select>
           </div>
 
-          {/* Right Side: Priority Selector + Close Button */}
+          {/* Right Side: Priority Selector + Save Button + Close Button */}
           <div className="flex items-center gap-1 shrink-0">
             {/* Mobile: Compact Priority Dropdown */}
             <select
               aria-label="Task Priority"
-              value={task.priority}
+              value={currentDraft.priority}
               onChange={(e) =>
-                updateTask(task.id, { priority: Number(e.target.value) as Priority }, `Changed priority`)
+                setDraft((d) => ({
+                  ...(d || getInitialDraft(task)),
+                  priority: Number(e.target.value) as Priority,
+                }))
               }
-              className={`sm:hidden text-xs font-semibold px-2 py-1 rounded-md border text-center ${
-                task.priority === 5
+              className={`sm:hidden text-xs font-semibold px-1.5 py-1 rounded-md border text-center ${
+                currentDraft.priority === 5
                   ? 'bg-rose-50 border-rose-200 text-rose-700'
-                  : task.priority === 3
+                  : currentDraft.priority === 3
                     ? 'bg-amber-50 border-amber-200 text-amber-700'
-                    : task.priority === 1
+                    : currentDraft.priority === 1
                       ? 'bg-blue-50 border-blue-200 text-blue-700'
                       : 'bg-zinc-50 border-zinc-200 text-zinc-600'
               }`}
             >
-              <option value={5}>P5 High</option>
-              <option value={3}>P3 Med</option>
-              <option value={1}>P1 Low</option>
-              <option value={0}>No Priority</option>
+              <option value={5}>P5</option>
+              <option value={3}>P3</option>
+              <option value={1}>P1</option>
+              <option value={0}>P0</option>
             </select>
 
             {/* Tablet / Desktop: 4 Flag Buttons */}
@@ -227,10 +348,18 @@ export const TaskDetailPane: React.FC = () => {
               {([5, 3, 1, 0] as Priority[]).map((p) => (
                 <button
                   key={p}
-                  onClick={() => updateTask(task.id, { priority: p }, `Changed priority to P${p}`)}
+                  type="button"
+                  onClick={() =>
+                    setDraft((d) => ({
+                      ...(d || getInitialDraft(task)),
+                      priority: p,
+                    }))
+                  }
                   title={`Priority ${p}`}
                   className={`p-1.5 rounded-md ${
-                    task.priority === p ? 'bg-zinc-100 font-semibold' : 'opacity-45 hover:opacity-100'
+                    currentDraft.priority === p
+                      ? 'bg-zinc-100 font-semibold ring-1 ring-zinc-300'
+                      : 'opacity-45 hover:opacity-100'
                   }`}
                 >
                   <Flag
@@ -249,10 +378,48 @@ export const TaskDetailPane: React.FC = () => {
               ))}
             </div>
 
-            {/* Prominent Close Button */}
+            {/* Prominent Save Button */}
             <button
+              type="button"
+              onClick={handleSave}
+              disabled={!isDirty && !isSavedNotice}
+              title={
+                isSavedNotice
+                  ? 'Changes saved!'
+                  : isDirty
+                    ? 'Save changes (Ctrl+S)'
+                    : 'No unsaved changes'
+              }
+              aria-label="Save Task Changes"
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                isSavedNotice
+                  ? 'bg-emerald-600 text-white shadow-2xs'
+                  : isDirty
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-2xs'
+                    : 'bg-zinc-100 text-zinc-400 cursor-default'
+              }`}
+            >
+              {isSavedNotice ? (
+                <>
+                  <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span>Saved</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Save</span>
+                  {isDirty && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-300 animate-ping" />
+                  )}
+                </>
+              )}
+            </button>
+
+            {/* Close Button */}
+            <button
+              type="button"
               onClick={() => setSelectedTaskId(null)}
-              title="Close Detail Pane"
+              title="Close Detail Pane (Esc)"
               aria-label="Close Detail Pane"
               className="p-1.5 rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 bg-zinc-50 border border-zinc-200/80 ml-0.5"
             >
@@ -267,8 +434,13 @@ export const TaskDetailPane: React.FC = () => {
           <div className="space-y-2.5">
             <input
               type="text"
-              value={task.title}
-              onChange={(e) => updateTask(task.id, { title: e.target.value })}
+              value={currentDraft.title}
+              onChange={(e) =>
+                setDraft((d) => ({
+                  ...(d || getInitialDraft(task)),
+                  title: e.target.value,
+                }))
+              }
               className={`w-full text-sm font-semibold focus:outline-none tracking-tight ${
                 isDone ? 'text-zinc-400' : 'text-zinc-900'
               }`}
@@ -315,10 +487,7 @@ export const TaskDetailPane: React.FC = () => {
                         {/* Pomodoro Mode Card */}
                         <button
                           type="button"
-                          onClick={() => {
-                            setShowFocusMenu(false);
-                            startTaskFocus(task.id, 'pomo');
-                          }}
+                          onClick={() => handleStartFocus('pomo')}
                           className="w-full text-left p-2.5 rounded-lg border border-zinc-200/80 hover:border-zinc-900 hover:bg-zinc-50 transition-all flex items-start gap-2.5 group"
                         >
                           <div className="w-8 h-8 rounded-lg bg-rose-50 border border-rose-200/80 text-rose-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
@@ -347,10 +516,7 @@ export const TaskDetailPane: React.FC = () => {
                         {/* Stopwatch Mode Card */}
                         <button
                           type="button"
-                          onClick={() => {
-                            setShowFocusMenu(false);
-                            startTaskFocus(task.id, 'stopwatch');
-                          }}
+                          onClick={() => handleStartFocus('stopwatch')}
                           className="w-full text-left p-2.5 rounded-lg border border-zinc-200/80 hover:border-zinc-900 hover:bg-zinc-50 transition-all flex items-start gap-2.5 group"
                         >
                           <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200/80 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
@@ -384,23 +550,25 @@ export const TaskDetailPane: React.FC = () => {
                           <button
                             type="button"
                             onClick={() =>
-                              updateTask(task.id, {
-                                estimatedPomos: Math.max(0, (task.estimatedPomos || 0) - 1),
-                              })
+                              setDraft((d) => ({
+                                ...(d || getInitialDraft(task)),
+                                estimatedPomos: Math.max(0, currentDraft.estimatedPomos - 1),
+                              }))
                             }
                             className="w-6 h-6 rounded border border-zinc-200 text-zinc-600 hover:bg-zinc-100 flex items-center justify-center text-xs font-bold"
                           >
                             -
                           </button>
                           <span className="w-6 text-center text-xs font-bold font-mono-num text-zinc-900">
-                            {task.estimatedPomos || 0}
+                            {currentDraft.estimatedPomos}
                           </span>
                           <button
                             type="button"
                             onClick={() =>
-                              updateTask(task.id, {
-                                estimatedPomos: (task.estimatedPomos || 0) + 1,
-                              })
+                              setDraft((d) => ({
+                                ...(d || getInitialDraft(task)),
+                                estimatedPomos: currentDraft.estimatedPomos + 1,
+                              }))
                             }
                             className="w-6 h-6 rounded border border-zinc-200 text-zinc-600 hover:bg-zinc-100 flex items-center justify-center text-xs font-bold"
                           >
@@ -414,20 +582,21 @@ export const TaskDetailPane: React.FC = () => {
               </div>
 
               <button
+                type="button"
                 onClick={() =>
-                  updateTask(
-                    task.id,
-                    { isNote: !task.isNote },
-                    task.isNote ? 'Converted Note to Task' : 'Converted Task to Note'
-                  )
+                  setDraft((d) => ({
+                    ...(d || getInitialDraft(task)),
+                    isNote: !currentDraft.isNote,
+                  }))
                 }
                 className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-zinc-100 text-zinc-700 hover:bg-zinc-200/70"
               >
                 <FileText className="w-3 h-3" strokeWidth={1.75} />
-                {task.isNote ? 'Switch to Task' : 'Convert to Note'}
+                {currentDraft.isNote ? 'Switch to Task' : 'Convert to Note'}
               </button>
 
               <button
+                type="button"
                 onClick={() => {
                   saveTaskAsTemplate(task.id);
                   setTemplateSavedBanner(true);
@@ -441,7 +610,7 @@ export const TaskDetailPane: React.FC = () => {
             </div>
           </div>
 
-          {/* Schedule, Duration & Recurrence Grid (Premium) */}
+          {/* Schedule, Duration & Recurrence Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-3 rounded-xl bg-zinc-50/80 border border-zinc-200/80 text-xs">
             <div>
               <label className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
@@ -449,8 +618,13 @@ export const TaskDetailPane: React.FC = () => {
               </label>
               <input
                 type="date"
-                value={task.startDate || ''}
-                onChange={(e) => updateTask(task.id, { startDate: e.target.value })}
+                value={currentDraft.startDate}
+                onChange={(e) =>
+                  setDraft((d) => ({
+                    ...(d || getInitialDraft(task)),
+                    startDate: e.target.value,
+                  }))
+                }
                 className="w-full px-2 py-1 rounded-md border border-zinc-200/90 bg-white text-xs font-mono-num"
               />
             </div>
@@ -461,8 +635,13 @@ export const TaskDetailPane: React.FC = () => {
               </label>
               <input
                 type="date"
-                value={task.dueDate || ''}
-                onChange={(e) => updateTask(task.id, { dueDate: e.target.value })}
+                value={currentDraft.dueDate}
+                onChange={(e) =>
+                  setDraft((d) => ({
+                    ...(d || getInitialDraft(task)),
+                    dueDate: e.target.value,
+                  }))
+                }
                 className="w-full px-2 py-1 rounded-md border border-zinc-200/90 bg-white text-xs font-mono-num"
               />
             </div>
@@ -473,12 +652,12 @@ export const TaskDetailPane: React.FC = () => {
               </label>
               <input
                 type="time"
-                value={task.startTime || ''}
+                value={currentDraft.startTime}
                 onChange={(e) =>
-                  updateTask(task.id, {
+                  setDraft((d) => ({
+                    ...(d || getInitialDraft(task)),
                     startTime: e.target.value,
-                    isAllDay: !e.target.value,
-                  })
+                  }))
                 }
                 className="w-full px-2 py-1 rounded-md border border-zinc-200/90 bg-white text-xs font-mono-num"
               />
@@ -492,12 +671,13 @@ export const TaskDetailPane: React.FC = () => {
                 type="number"
                 min={5}
                 step={5}
-                value={task.durationMinutes || ''}
+                value={currentDraft.durationMinutes}
                 placeholder="e.g. 60"
                 onChange={(e) =>
-                  updateTask(task.id, {
-                    durationMinutes: e.target.value ? Number(e.target.value) : undefined,
-                  })
+                  setDraft((d) => ({
+                    ...(d || getInitialDraft(task)),
+                    durationMinutes: e.target.value ? Number(e.target.value) : '',
+                  }))
                 }
                 className="w-full px-2 py-1 rounded-md border border-zinc-200/90 bg-white text-xs font-mono-num"
               />
@@ -511,12 +691,13 @@ export const TaskDetailPane: React.FC = () => {
                 type="number"
                 min={0}
                 max={99}
-                value={task.estimatedPomos || ''}
+                value={currentDraft.estimatedPomos || ''}
                 placeholder="0 (None)"
                 onChange={(e) =>
-                  updateTask(task.id, {
+                  setDraft((d) => ({
+                    ...(d || getInitialDraft(task)),
                     estimatedPomos: Math.max(0, parseInt(e.target.value, 10) || 0),
-                  })
+                  }))
                 }
                 className="w-full px-2 py-1 rounded-md border border-zinc-200/90 bg-white text-xs font-mono-num"
               />
@@ -527,9 +708,12 @@ export const TaskDetailPane: React.FC = () => {
                 <Repeat className="w-3 h-3" strokeWidth={1.75} /> Repeat Rule
               </label>
               <select
-                value={task.recurrenceRule || ''}
+                value={currentDraft.recurrenceRule}
                 onChange={(e) =>
-                  updateTask(task.id, { recurrenceRule: e.target.value || undefined })
+                  setDraft((d) => ({
+                    ...(d || getInitialDraft(task)),
+                    recurrenceRule: e.target.value,
+                  }))
                 }
                 className="w-full px-2 py-1 rounded-md border border-zinc-200/90 bg-white text-xs"
               >
@@ -548,20 +732,25 @@ export const TaskDetailPane: React.FC = () => {
               </label>
               <input
                 type="text"
-                value={task.assignee || ''}
+                value={currentDraft.assignee}
                 placeholder="Assign member..."
-                onChange={(e) => updateTask(task.id, { assignee: e.target.value || undefined })}
+                onChange={(e) =>
+                  setDraft((d) => ({
+                    ...(d || getInitialDraft(task)),
+                    assignee: e.target.value,
+                  }))
+                }
                 className="w-full px-2 py-1 rounded-md border border-zinc-200/90 bg-white text-xs"
               />
             </div>
           </div>
 
-          {/* Premium Reminders Block (Configurable Offsets, Constant Alert, Test & OS Permissions) */}
+          {/* Reminders Block (Configurable Offsets, Constant Alert, Test & OS Permissions) */}
           <div className="p-3.5 rounded-xl bg-zinc-50/80 border border-zinc-200/80 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-semibold text-zinc-700 flex items-center gap-1.5 font-mono-num">
                 <Bell className="w-3.5 h-3.5 text-zinc-600" strokeWidth={1.75} />
-                Reminders ({task.reminders.length}/5 Alerts)
+                Reminders ({currentDraft.reminders.length}/5 Alerts)
               </span>
 
               <button
@@ -575,7 +764,7 @@ export const TaskDetailPane: React.FC = () => {
               </button>
             </div>
 
-            {/* Reminder Offset Chips (TickTick Standard) */}
+            {/* Reminder Offset Chips */}
             <div className="space-y-1.5">
               <div className="text-[10px] text-zinc-400 font-medium">Select alert times:</div>
               <div className="flex flex-wrap gap-1.5">
@@ -589,7 +778,7 @@ export const TaskDetailPane: React.FC = () => {
                     '1d before',
                   ] as const
                 ).map((offset) => {
-                  const isSelected = task.reminders.includes(offset);
+                  const isSelected = currentDraft.reminders.includes(offset);
                   return (
                     <button
                       key={offset}
@@ -597,12 +786,15 @@ export const TaskDetailPane: React.FC = () => {
                       onClick={() => {
                         let next: string[];
                         if (isSelected) {
-                          next = task.reminders.filter((r) => r !== offset);
+                          next = currentDraft.reminders.filter((r) => r !== offset);
                         } else {
-                          if (task.reminders.length >= 5) return;
-                          next = [...task.reminders, offset];
+                          if (currentDraft.reminders.length >= 5) return;
+                          next = [...currentDraft.reminders, offset];
                         }
-                        updateTask(task.id, { reminders: next }, `Updated reminders to ${next.join(', ') || 'None'}`);
+                        setDraft((d) => ({
+                          ...(d || getInitialDraft(task)),
+                          reminders: next,
+                        }));
                       }}
                       className={`px-2 py-1 rounded-md text-[11px] font-medium border transition-colors ${
                         isSelected
@@ -635,13 +827,12 @@ export const TaskDetailPane: React.FC = () => {
               <label className="inline-flex items-center gap-1.5 text-xs text-zinc-700 bg-white px-2.5 py-1 rounded-md border border-zinc-200/80 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={task.constantReminder}
+                  checked={currentDraft.constantReminder}
                   onChange={(e) =>
-                    updateTask(
-                      task.id,
-                      { constantReminder: e.target.checked },
-                      e.target.checked ? 'Enabled Constant Reminder' : 'Disabled Constant Reminder'
-                    )
+                    setDraft((d) => ({
+                      ...(d || getInitialDraft(task)),
+                      constantReminder: e.target.checked,
+                    }))
                   }
                   className="rounded text-zinc-900"
                 />
@@ -652,8 +843,13 @@ export const TaskDetailPane: React.FC = () => {
               <label className="inline-flex items-center gap-1.5 text-xs text-zinc-700 bg-white px-2.5 py-1 rounded-md border border-zinc-200/80 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={task.emailReminder}
-                  onChange={(e) => updateTask(task.id, { emailReminder: e.target.checked })}
+                  checked={currentDraft.emailReminder}
+                  onChange={(e) =>
+                    setDraft((d) => ({
+                      ...(d || getInitialDraft(task)),
+                      emailReminder: e.target.checked,
+                    }))
+                  }
                   className="rounded text-zinc-900"
                 />
                 <Mail className="w-3.5 h-3.5 text-blue-600" strokeWidth={1.75} />
@@ -665,9 +861,12 @@ export const TaskDetailPane: React.FC = () => {
               <MapPin className="w-3.5 h-3.5 text-zinc-400 shrink-0" strokeWidth={1.75} />
               <input
                 type="text"
-                value={task.locationReminder || ''}
+                value={currentDraft.locationReminder}
                 onChange={(e) =>
-                  updateTask(task.id, { locationReminder: e.target.value || undefined })
+                  setDraft((d) => ({
+                    ...(d || getInitialDraft(task)),
+                    locationReminder: e.target.value,
+                  }))
                 }
                 placeholder="Location reminder (e.g. Office HQ, Supermarket)..."
                 className="w-full text-xs bg-white px-2.5 py-1 rounded-md border border-zinc-200/80 focus:outline-none focus:border-zinc-900"
@@ -676,7 +875,7 @@ export const TaskDetailPane: React.FC = () => {
           </div>
 
           {/* Subtasks / Checklists */}
-          {!task.isNote && (
+          {!currentDraft.isNote && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 font-mono-num">
@@ -703,6 +902,7 @@ export const TaskDetailPane: React.FC = () => {
                         <span className="text-xs truncate text-zinc-800">{sub.title}</span>
                       </label>
                       <button
+                        type="button"
                         onClick={() => deleteSubtask(task.id, sub.id)}
                         className="opacity-100 lg:opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-rose-500 p-0.5"
                       >
@@ -748,6 +948,7 @@ export const TaskDetailPane: React.FC = () => {
                                 </span>
                               </label>
                               <button
+                                type="button"
                                 onClick={() => deleteSubtask(task.id, sub.id)}
                                 className="opacity-100 lg:opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-rose-500 p-0.5"
                               >
@@ -775,7 +976,7 @@ export const TaskDetailPane: React.FC = () => {
                   type="text"
                   value={newSubtaskTitle}
                   onChange={(e) => setNewSubtaskTitle(e.target.value)}
-                  placeholder="+ Add checklist item (up to 199 in Premium)..."
+                  placeholder="+ Add checklist item..."
                   className="flex-1 text-xs px-2.5 py-1.5 rounded-lg border border-zinc-200/90 focus:outline-none focus:border-zinc-900"
                 />
                 <button
@@ -795,8 +996,13 @@ export const TaskDetailPane: React.FC = () => {
             </label>
             <textarea
               rows={5}
-              value={task.content}
-              onChange={(e) => updateTask(task.id, { content: e.target.value })}
+              value={currentDraft.content}
+              onChange={(e) =>
+                setDraft((d) => ({
+                  ...(d || getInitialDraft(task)),
+                  content: e.target.value,
+                }))
+              }
               placeholder="Write markdown notes, links, or code snippets..."
               className="w-full p-3 rounded-xl border border-zinc-200/90 text-xs text-zinc-700 font-mono leading-relaxed focus:outline-none focus:border-zinc-900"
             />
@@ -809,16 +1015,19 @@ export const TaskDetailPane: React.FC = () => {
             </span>
             <div className="flex flex-wrap gap-1.5">
               {tags.map((tg) => {
-                const hasTag = task.tags.includes(tg.name);
+                const hasTag = currentDraft.tags.includes(tg.name);
                 return (
                   <button
                     key={tg.id}
                     type="button"
                     onClick={() => {
                       const next = hasTag
-                        ? task.tags.filter((t) => t !== tg.name)
-                        : [...task.tags, tg.name];
-                      updateTask(task.id, { tags: next });
+                        ? currentDraft.tags.filter((t) => t !== tg.name)
+                        : [...currentDraft.tags, tg.name];
+                      setDraft((d) => ({
+                        ...(d || getInitialDraft(task)),
+                        tags: next,
+                      }));
                     }}
                     className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium border ${
                       hasTag
@@ -903,10 +1112,11 @@ export const TaskDetailPane: React.FC = () => {
             ))}
           </div>
 
-          {/* Comments & Activity Log Tabs (Premium Activity History) */}
+          {/* Comments & Activity Log Tabs */}
           <div className="pt-2 border-t border-zinc-200/80">
             <div className="flex items-center gap-4 mb-3">
               <button
+                type="button"
                 onClick={() => setActiveBottomTab('comments')}
                 className={`text-xs font-semibold flex items-center gap-1.5 pb-1 border-b-2 font-mono-num ${
                   activeBottomTab === 'comments'
@@ -918,6 +1128,7 @@ export const TaskDetailPane: React.FC = () => {
                 Comments ({task.comments.length})
               </button>
               <button
+                type="button"
                 onClick={() => setActiveBottomTab('activity')}
                 className={`text-xs font-semibold flex items-center gap-1.5 pb-1 border-b-2 font-mono-num ${
                   activeBottomTab === 'activity'
@@ -986,11 +1197,41 @@ export const TaskDetailPane: React.FC = () => {
           </div>
         </div>
 
-        {/* Footer Actions: Duplicate & Trash */}
+        {/* Floating Unsaved Changes Bar */}
+        {isDirty && (
+          <div className="sticky bottom-0 z-30 px-3.5 py-2 bg-blue-50/95 backdrop-blur-sm border-t border-blue-200/90 flex items-center justify-between shadow-md animate-sheet-up">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping shrink-0" />
+              <span className="text-[11px] font-semibold text-blue-900 truncate">
+                Unsaved changes
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={handleDiscard}
+                className="px-2 py-1 text-[11px] font-medium text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/70 rounded-md transition-colors"
+              >
+                Discard
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                className="flex items-center gap-1 px-3 py-1 text-[11px] font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-md shadow-xs transition-colors"
+              >
+                <Save className="w-3 h-3" />
+                <span>Save</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Footer Actions: Updated timestamp, Duplicate & Trash */}
         <div className="min-h-11 px-4 border-t border-zinc-200/80 flex items-center justify-between text-xs text-zinc-400 shrink-0 font-mono-num bg-white pb-[env(safe-area-inset-bottom,0px)]">
           <span>Updated {task.updatedAt}</span>
           <div className="flex items-center gap-1.5">
             <button
+              type="button"
               onClick={() => duplicateTask(task.id)}
               title="Duplicate Task"
               className="p-1.5 rounded-md hover:bg-zinc-100 text-zinc-500"
@@ -998,6 +1239,7 @@ export const TaskDetailPane: React.FC = () => {
               <Copy className="w-3.5 h-3.5" strokeWidth={1.75} />
             </button>
             <button
+              type="button"
               onClick={() => deleteTask(task.id)}
               title="Move to Trash"
               className="p-1.5 rounded-md hover:bg-rose-50 text-rose-500"
