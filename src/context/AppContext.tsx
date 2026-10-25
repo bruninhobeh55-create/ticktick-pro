@@ -99,8 +99,8 @@ interface AppContextValue {
   setIsInstallModalOpen: (v: boolean) => void;
   isDatabasePromptOpen: boolean;
   setIsDatabasePromptOpen: (v: boolean) => void;
-  settingsInitialTab: 'general' | 'themes' | 'supabase' | 'shortcuts' | 'premium';
-  openSettingsTab: (tab: 'general' | 'themes' | 'supabase' | 'shortcuts' | 'premium') => void;
+  settingsInitialTab: 'general' | 'themes' | 'supabase' | 'gemini' | 'shortcuts' | 'premium';
+  openSettingsTab: (tab: 'general' | 'themes' | 'supabase' | 'gemini' | 'shortcuts' | 'premium') => void;
 
   // Sonner Stacked Toasts
   toasts: ToastItem[];
@@ -273,7 +273,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return !hasDismissedDatabasePrompt();
   });
   const [settingsInitialTab, setSettingsInitialTab] = useState<
-    'general' | 'themes' | 'supabase' | 'shortcuts' | 'premium'
+    'general' | 'themes' | 'supabase' | 'gemini' | 'shortcuts' | 'premium'
   >('general');
 
   // Sonner Stacked Toasts
@@ -1490,7 +1490,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const openSettingsTab = (
-    tab: 'general' | 'themes' | 'supabase' | 'shortcuts' | 'premium'
+    tab: 'general' | 'themes' | 'supabase' | 'gemini' | 'shortcuts' | 'premium'
   ) => {
     setSettingsInitialTab(tab);
     setIsSettingsOpen(true);
