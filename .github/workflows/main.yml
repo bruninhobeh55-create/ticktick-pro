@@ -1,0 +1,14 @@
+name: Gerar chaves VAPID
+
+on:
+  workflow_dispatch:
+
+jobs:
+  gerar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Gerar chaves
+        run: npx --yes web-push generate-vapid-keys
