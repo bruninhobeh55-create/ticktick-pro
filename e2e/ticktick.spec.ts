@@ -428,4 +428,54 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
       await expect(settingsUrlInput).toHaveValue(savedUrl || '');
     }
   });
+
+  test('Eisenhower Matrix: In-Quadrant Quick-Add Card, Group by/Sort/Order, Manage View & User Guide', async ({
+    page,
+    isMobile,
+  }) => {
+    await page.goto('/');
+
+    if (!isMobile) {
+      const desktopRail = page.locator('aside[aria-label="Primary Module Navigation"]');
+      await desktopRail.locator('button[aria-label="Eisenhower Matrix"]').click();
+    } else {
+      const mobileNav = page.locator('nav[aria-label="Mobile Bottom Navigation"]');
+      await mobileNav.locator('button[aria-label="More Modules and Settings"]').click();
+      await page.getByRole('button', { name: 'Matrix' }).click();
+    }
+
+    // 1. Verify Header and Top More Menu (...)
+    await expect(page.getByRole('heading', { name: 'Eisenhower Matrix' })).toBeVisible();
+    await page.locator('button[aria-label="Eisenhower Matrix options"]').click();
+    await expect(page.getByText('Manage View')).toBeVisible();
+    await expect(page.getByText('Hide Completed')).toBeVisible();
+    await expect(page.getByText('User Guide')).toBeVisible();
+
+    // 2. Open User Guide Modal
+    await page.getByText('User Guide').click();
+    await expect(page.getByText('Eisenhower Matrix User Guide')).toBeVisible();
+    await expect(page.getByText(/What is important is seldom urgent/i)).toBeVisible();
+    await page.getByRole('button', { name: 'Got It' }).click();
+    await expect(page.getByText('Eisenhower Matrix User Guide')).toHaveCount(0);
+
+    // 3. Test In-Quadrant Floating Quick-Add Card in Quadrant II (Not Urgent & Important)
+    await page.locator('button[aria-label="Add task to Not Urgent & Important"]').click();
+    const taskInput = page.locator('input[placeholder="What would you like to do?"]');
+    await expect(taskInput).toBeVisible();
+    await expect(page.locator('textarea[placeholder*="Write something or type / for commands"]')).toBeVisible();
+
+    // Fill task title and submit
+    await taskInput.fill('Deep Work Strategic Roadmap');
+    await page.getByRole('button', { name: 'Add Task', exact: true }).click();
+    await expect(page.getByText('Deep Work Strategic Roadmap').first()).toBeVisible();
+
+    // 4. Test Quadrant Header (...) Menu (Edit, Group by, Sort by, Order)
+    await page.locator('button[aria-label="Options for Urgent & Unimportant"]').click();
+    await expect(page.getByText('Edit').first()).toBeVisible();
+    await expect(page.getByText('Oldest First').first()).toBeVisible();
+    await expect(page.getByText('Newest First').first()).toBeVisible();
+
+    // Click outside to close menu
+    await page.locator('h1', { hasText: 'Eisenhower Matrix' }).click();
+  });
 });
