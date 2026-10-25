@@ -135,11 +135,8 @@ export const CalendarModule: React.FC = () => {
     window.addEventListener('pointerup', onUp);
   };
 
-  // NOVO: posição vertical da linha da hora atual, em minutos desde 07:00
-  const HOUR_ROW_PX = 64; // altura mínima de cada hora no grid (min-h-[64px])
-  const GRID_START_HOUR = 7;
+  // NOVO: minutos desde 00:00 da hora atual
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  const nowTopPct = ((nowMinutes - GRID_START_HOUR * 60) / 60) * 100; // em % de uma hora
 
   const today = startOfToday();
   const todayStr = format(today, 'yyyy-MM-dd');
