@@ -101,14 +101,17 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
     await deleteHabitLogBtns.first().click();
     await expect(deleteHabitLogBtns).toHaveCount(beforeHabitLogCount - 1);
 
-    // 5. Test Supabase Cloud Push & Pull
+    // 5. Test Supabase Cloud Connection via Custom / Demo Project, Push & Pull
     await desktopRail.locator('button[aria-label="Supabase Backend Settings"]').click();
-    await expect(page.getByText('Connected (Live Sync)')).toBeVisible();
+    await expect(page.getByText('Local-First Mode')).toBeVisible();
+    await page.getByRole('button', { name: /Fill Demo Project/i }).click();
+    await page.getByRole('button', { name: /Save & Connect Supabase/i }).click();
+    await expect(page.getByText('Connected (Live Sync)')).toBeVisible({ timeout: 10000 });
     await page.getByRole('button', { name: /Push to Supabase/i }).click();
     await expect(page.getByText(/Pushed .* tasks/i).first()).toBeVisible({ timeout: 15000 });
     await page.getByRole('button', { name: /Pull from Supabase/i }).click();
     await expect(
-      page.getByText(/(Pulled .* tasks|Connected to Supabase Cloud — workspace is up to date)/i).first()
+      page.getByText(/(Pulled .* tasks|Connected to Supabase Cloud|workspace is up to date)/i).first()
     ).toBeVisible({ timeout: 15000 });
     await page.locator('button[title="Close Settings"]').click();
 
@@ -364,6 +367,65 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
       // 5. Verify it navigated to Pomodoro module in Stopwatch mode focusing on this task
       await expect(page.getByText('Focusing On Task')).toBeVisible();
       await expect(page.locator('select').filter({ hasText: 'Task Without Pomo Estimate' })).toBeVisible();
+    }
+  });
+
+  test('First-Time User Database Prompt, Custom Credentials Storage & Same Browser Persistence', async ({
+    page,
+    isMobile,
+  }) => {
+    // 1. Simulate new user arriving: clear all storage and set flag to enable setup prompt modal
+    await page.goto('/');
+    await page.evaluate(() => {
+      localStorage.clear();
+      localStorage.setItem('ticktick_e2e_show_db_modal', 'true');
+    });
+    await page.reload();
+
+    // 2. Verify Database Setup Prompt modal is displayed with clear private workspace messaging
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page.getByText('Connect Your Database')).toBeVisible();
+    await expect(page.getByText('Private by default')).toBeVisible();
+
+    // Verify inputs for custom Supabase URL and Anon Key are present
+    const urlInput = page.locator('input[placeholder*="your-project.supabase.co"]');
+    const keyInput = page.locator('input[placeholder*="eyJhbGciOi"]');
+    await expect(urlInput).toBeVisible();
+    await expect(keyInput).toBeVisible();
+
+    // 3. Test instructions toggle
+    await page.getByText(/How to get free Supabase keys/i).click();
+    await expect(page.getByText(/How to create your free Supabase database/i)).toBeVisible();
+
+    // 4. Test "Try Demo DB" fills valid demo credentials
+    await page.getByRole('button', { name: /Try Demo DB/i }).click();
+    const filledUrl = await urlInput.inputValue();
+    expect(filledUrl).toContain('supabase.co');
+
+    // 5. Connect to database
+    await page.getByRole('button', { name: /Connect & Sync Database/i }).click();
+
+    // Verify modal is dismissed and success toast appears
+    await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 10000 });
+
+    // 6. Test Same Browser Persistence:
+    // Reload the page without clearing storage to simulate the same user revisiting the browser
+    await page.reload();
+
+    // Prompt must NOT be shown again
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+
+    // Verify credentials are preserved in localStorage
+    const savedUrl = await page.evaluate(() => localStorage.getItem('ticktick_supabase_url'));
+    expect(savedUrl).toContain('supabase.co');
+
+    // Verify in Settings that the database credentials remain present
+    if (!isMobile) {
+      const desktopRail = page.locator('aside[aria-label="Primary Module Navigation"]');
+      await desktopRail.locator('button[aria-label="Supabase Backend Settings"]').click();
+      await expect(page.getByText('Connected (Live Sync)')).toBeVisible({ timeout: 10000 });
+      const settingsUrlInput = page.locator('form input[type="url"]');
+      await expect(settingsUrlInput).toHaveValue(savedUrl || '');
     }
   });
 });

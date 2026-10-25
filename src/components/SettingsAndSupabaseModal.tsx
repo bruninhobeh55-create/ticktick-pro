@@ -18,7 +18,11 @@ import {
   X,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { getSupabaseConfig } from '../lib/supabase';
+import {
+  DEMO_SUPABASE_ANON_KEY,
+  DEMO_SUPABASE_URL,
+  getSupabaseConfig,
+} from '../lib/supabase';
 import { ThemeId } from '../types';
 import {
   checkNotificationDiagnostic,
@@ -58,6 +62,9 @@ export const SettingsAndSupabaseModal: React.FC = () => {
 
   useEffect(() => {
     if (isSettingsOpen) {
+      const cfg = getSupabaseConfig();
+      setSbUrl(cfg.url);
+      setSbAnonKey(cfg.anonKey);
       checkNotificationDiagnostic().then(setNotifDiag);
     }
   }, [isSettingsOpen, notificationPermission]);
@@ -490,22 +497,33 @@ ALTER TABLE public.tasks DISABLE ROW LEVEL SECURITY;`}
               </div>
 
               <form onSubmit={handleConnectSupabase} className="space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    VITE_SUPABASE_URL
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-zinc-700">
+                    Supabase Project URL
                   </label>
-                  <input
-                    type="url"
-                    required
-                    value={sbUrl}
-                    onChange={(e) => setSbUrl(e.target.value)}
-                    placeholder="https://xyzcompany.supabase.co"
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-zinc-300 font-mono focus:outline-none focus:border-zinc-900"
-                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSbUrl(DEMO_SUPABASE_URL);
+                      setSbAnonKey(DEMO_SUPABASE_ANON_KEY);
+                    }}
+                    className="text-[11px] text-blue-600 hover:text-blue-700 font-medium hover:underline"
+                  >
+                    Fill Demo Project
+                  </button>
                 </div>
+                <input
+                  type="url"
+                  required
+                  value={sbUrl}
+                  onChange={(e) => setSbUrl(e.target.value)}
+                  placeholder="https://xyzcompany.supabase.co"
+                  className="w-full px-3 py-2 text-xs rounded-lg border border-zinc-300 font-mono focus:outline-none focus:border-zinc-900"
+                />
+
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    VITE_SUPABASE_ANON_KEY
+                    Supabase Anon / Public API Key
                   </label>
                   <input
                     type="password"
@@ -515,6 +533,9 @@ ALTER TABLE public.tasks DISABLE ROW LEVEL SECURITY;`}
                     placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
                     className="w-full px-3 py-2 text-xs rounded-lg border border-zinc-300 font-mono focus:outline-none focus:border-zinc-900"
                   />
+                  <p className="text-[11px] text-zinc-500 mt-1">
+                    Your database credentials are saved securely in this browser for future visits.
+                  </p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 pt-1">

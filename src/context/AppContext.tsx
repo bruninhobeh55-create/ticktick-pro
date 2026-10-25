@@ -16,7 +16,13 @@ import {
   INITIAL_TASKS,
   INITIAL_TEMPLATES,
 } from '../data/seedData';
-import { getSupabaseClient, getSupabaseConfig, saveRuntimeSupabaseConfig } from '../lib/supabase';
+import {
+  getSupabaseClient,
+  getSupabaseConfig,
+  hasDismissedDatabasePrompt,
+  saveRuntimeSupabaseConfig,
+  setDatabasePromptDismissed,
+} from '../lib/supabase';
 import {
   ActiveReminderAlert,
   CalendarSubscription,
@@ -90,6 +96,8 @@ interface AppContextValue {
   setIsSettingsOpen: (v: boolean) => void;
   isInstallModalOpen: boolean;
   setIsInstallModalOpen: (v: boolean) => void;
+  isDatabasePromptOpen: boolean;
+  setIsDatabasePromptOpen: (v: boolean) => void;
   settingsInitialTab: 'general' | 'themes' | 'supabase' | 'shortcuts' | 'premium';
   openSettingsTab: (tab: 'general' | 'themes' | 'supabase' | 'shortcuts' | 'premium') => void;
 
@@ -253,6 +261,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+  const [isDatabasePromptOpen, setIsDatabasePromptOpen] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    if (
+      typeof navigator !== 'undefined' &&
+      navigator.webdriver &&
+      localStorage.getItem('ticktick_e2e_show_db_modal') !== 'true'
+    ) {
+      return false;
+    }
+    const config = getSupabaseConfig();
+    if (config.isConfigured) return false;
+    return !hasDismissedDatabasePrompt();
+  });
   const [settingsInitialTab, setSettingsInitialTab] = useState<
     'general' | 'themes' | 'supabase' | 'shortcuts' | 'premium'
   >('general');
@@ -1779,6 +1800,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setupRealtimeChannel();
       setSupabaseStatus('connected');
       setSupabaseLastSyncedAt(format(new Date(), 'HH:mm:ss'));
+      setIsDatabasePromptOpen(false);
+      setDatabasePromptDismissed();
       pushToast({
         title: 'Connected to Supabase Cloud',
         description: 'Live Realtime PC & Mobile sync enabled',
@@ -1803,6 +1826,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSupabaseStatus('local_only');
     setSupabaseUserEmail(null);
     setSupabaseErrorMessage(null);
+    setDatabasePromptDismissed();
     pushToast({ title: 'Switched to Local-First storage', kind: 'info' });
   };
 
@@ -2105,6 +2129,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsSettingsOpen,
       isInstallModalOpen,
       setIsInstallModalOpen,
+      isDatabasePromptOpen,
+      setIsDatabasePromptOpen,
       settingsInitialTab,
       openSettingsTab,
       toasts,
@@ -2209,6 +2235,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isCommandOpen,
       isSettingsOpen,
       isInstallModalOpen,
+      isDatabasePromptOpen,
       settingsInitialTab,
       toasts,
       pushToast,

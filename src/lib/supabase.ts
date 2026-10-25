@@ -3,9 +3,13 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 const STORAGE_URL_KEY = 'ticktick_supabase_url';
 const STORAGE_ANON_KEY = 'ticktick_supabase_anon_key';
 const STORAGE_DISCONNECTED_KEY = 'ticktick_supabase_disconnected';
+export const STORAGE_PROMPT_DISMISSED_KEY = 'ticktick_db_prompt_dismissed';
 
-export const DEFAULT_SUPABASE_URL = 'https://tnvhzivoehqqlspqqyvu.supabase.co';
-export const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_a3N-YXwCN0aWQYTAXa9yUA_L3_XRluH';
+export const DEMO_SUPABASE_URL = 'https://tnvhzivoehqqlspqqyvu.supabase.co';
+export const DEMO_SUPABASE_ANON_KEY = 'sb_publishable_a3N-YXwCN0aWQYTAXa9yUA_L3_XRluH';
+// Keep DEFAULT_ aliases for compatibility
+export const DEFAULT_SUPABASE_URL = DEMO_SUPABASE_URL;
+export const DEFAULT_SUPABASE_ANON_KEY = DEMO_SUPABASE_ANON_KEY;
 
 export interface SupabaseConnectionConfig {
   url: string;
@@ -56,12 +60,31 @@ export function getSupabaseConfig(): SupabaseConnectionConfig {
     };
   }
 
+  // Never auto-connect new users to a shared database.
+  // Each user must provide their own Supabase link or choose local storage.
   return {
-    url: DEFAULT_SUPABASE_URL,
-    anonKey: DEFAULT_SUPABASE_ANON_KEY,
-    isConfigured: true,
-    source: 'default',
+    url: '',
+    anonKey: '',
+    isConfigured: false,
+    source: 'none',
   };
+}
+
+export function hasDismissedDatabasePrompt(): boolean {
+  if (typeof window === 'undefined') return false;
+  return localStorage.getItem(STORAGE_PROMPT_DISMISSED_KEY) === 'true';
+}
+
+export function setDatabasePromptDismissed(): void {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(STORAGE_PROMPT_DISMISSED_KEY, 'true');
+  }
+}
+
+export function resetDatabasePrompt(): void {
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem(STORAGE_PROMPT_DISMISSED_KEY);
+  }
 }
 
 export function saveRuntimeSupabaseConfig(url: string, anonKey: string) {
@@ -73,6 +96,7 @@ export function saveRuntimeSupabaseConfig(url: string, anonKey: string) {
     localStorage.removeItem(STORAGE_DISCONNECTED_KEY);
     localStorage.setItem(STORAGE_URL_KEY, url.trim());
     localStorage.setItem(STORAGE_ANON_KEY, anonKey.trim());
+    setDatabasePromptDismissed();
   }
   cachedClient = null;
   cachedConfigKey = '';

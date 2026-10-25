@@ -39,6 +39,9 @@ const ActiveReminderModal = lazy(() =>
 const InstallAppModal = lazy(() =>
   import('./components/InstallAppModal').then((m) => ({ default: m.InstallAppModal }))
 );
+const DatabaseSetupPromptModal = lazy(() =>
+  import('./components/DatabaseSetupPromptModal').then((m) => ({ default: m.DatabaseSetupPromptModal }))
+);
 
 const ModuleLoadingFallback: React.FC = () => (
   <div className="flex-1 flex flex-col items-center justify-center p-8 bg-zinc-50/80 select-none animate-pulse">
@@ -126,6 +129,7 @@ const MainShell: React.FC = () => {
           isOpen={isInstallModalOpen}
           onClose={() => setIsInstallModalOpen(false)}
         />
+        <DatabaseSetupPromptModal />
       </Suspense>
 
       <SonnerToaster toasts={toasts} onDismiss={dismissToast} />
