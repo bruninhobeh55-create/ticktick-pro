@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { ActiveSidebarSelection, useApp } from '../context/AppContext';
 import { Priority, SmartListId, TaskList, ViewMode } from '../types';
+import { isTaskDueOnDate, isTaskDueInDateRange } from '../utils/recurringTasks';
 
 const LIST_EMOJIS = ['👋', '📋', '🚀', '💼', '🎯', '📚', '💡', '🏠', '🔥', '✨', '🎨', '⚡'];
 
@@ -272,12 +273,10 @@ export const TaskSidebar: React.FC = () => {
   const counts = {
     all: activeTasks.length,
     today: activeTasks.filter(
-      (t) => t.dueDate && (t.dueDate === todayStr || isBefore(parseISO(t.dueDate), today))
+      (t) => t.dueDate && (isTaskDueOnDate(t, todayStr) || isBefore(parseISO(t.dueDate), today))
     ).length,
-    tomorrow: activeTasks.filter((t) => t.dueDate === tomorrowStr).length,
-    next7days: activeTasks.filter(
-      (t) => t.dueDate && t.dueDate >= todayStr && t.dueDate <= next7Str
-    ).length,
+    tomorrow: activeTasks.filter((t) => t.dueDate && isTaskDueOnDate(t, tomorrowStr)).length,
+    next7days: activeTasks.filter((t) => isTaskDueInDateRange(t, todayStr, next7Str)).length,
     inbox: activeTasks.filter((t) => t.listId === 'inbox').length,
     assigned: activeTasks.filter((t) => Boolean(t.assignee)).length,
   };

@@ -51,6 +51,7 @@ import {
   requestDeviceNotificationPermission,
   sendDeviceNotification,
 } from '../utils/notificationEngine';
+import { getNextOccurrenceDate } from '../utils/recurringTasks';
 
 const STORAGE_PREFIX = 'ticktick_pro_v2_';
 
@@ -923,6 +924,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       soundEngine.playCompletionBell();
       setPreferences((prev) => ({ ...prev, achievementScore: prev.achievementScore + 8 }));
     }
+
+    // Recurring task completion flow: archives completed instance and advances recurring rule
+    if (isCompleting && target.recurrenceRule) {
+      const todayDateStr = format(new Date(), 'yyyy-MM-dd');
+      const baseDate = target.dueDate || todayDateStr;
+      const nextDue = getNextOccurrenceDate(baseDate, target.recurrenceRule);
+      const nextStart = target.startDate
+        ? getNextOccurrenceDate(target.startDate, target.recurrenceRule)
+        : nextDue;
+
+      const completedInstance: Task = {
+        ...target,
+        id: crypto.randomUUID(),
+        status: 'completed',
+        completedAt: new Date().toISOString(),
+        recurrenceRule: undefined,
+        title: target.title,
+      };
+
+      const resetSubtasks = target.subtasks?.map((st) => ({ ...st, completed: false })) || [];
+
+      updateTask(
+        id,
+        {
+          status: 'todo',
+          dueDate: nextDue,
+          startDate: nextStart,
+          completedAt: undefined,
+          subtasks: resetSubtasks,
+        },
+        `Completed recurring occurrence; next scheduled on ${nextDue}`
+      );
+
+      setTasks((prev) => [completedInstance, ...prev]);
+
+      pushToast({
+        title: 'Recurring task completed',
+        description: `Next due: ${nextDue}`,
+        kind: 'success',
+      });
+      return;
+    }
+
     updateTask(
       id,
       {

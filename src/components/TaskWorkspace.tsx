@@ -37,6 +37,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { Priority, Task, TaskList, ViewMode } from '../types';
 import { parseNaturalLanguageTask } from '../utils/nlpParser';
+import { isTaskDueOnDate, isTaskDueInDateRange } from '../utils/recurringTasks';
 
 const PRIORITY_BORDER: Record<Priority, string> = {
   5: 'border-rose-500 text-rose-500 hover:bg-rose-50',
@@ -150,12 +151,16 @@ export const TaskWorkspace: React.FC = () => {
               t.status !== 'trash' &&
               t.status !== 'wont_do' &&
               t.dueDate &&
-              (t.dueDate === todayStr || isBefore(parseISO(t.dueDate), today))
+              (isTaskDueOnDate(t, todayStr) || isBefore(parseISO(t.dueDate), today))
           );
           break;
         case 'tomorrow':
           base = base.filter(
-            (t) => t.status !== 'trash' && t.status !== 'wont_do' && t.dueDate === tomorrowStr
+            (t) =>
+              t.status !== 'trash' &&
+              t.status !== 'wont_do' &&
+              t.dueDate &&
+              isTaskDueOnDate(t, tomorrowStr)
           );
           break;
         case 'next7days':
@@ -163,9 +168,7 @@ export const TaskWorkspace: React.FC = () => {
             (t) =>
               t.status !== 'trash' &&
               t.status !== 'wont_do' &&
-              t.dueDate &&
-              t.dueDate >= todayStr &&
-              t.dueDate <= next7Str
+              isTaskDueInDateRange(t, todayStr, next7Str)
           );
           break;
         case 'inbox':

@@ -23,11 +23,13 @@ import {
   Clock,
   Globe,
   Plus,
+  Repeat,
   Sparkles,
   X,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { TaskDetailPane } from './TaskDetailPane';
+import { isTaskDueOnDate } from '../utils/recurringTasks';
 
 type CalendarSubView = 'month' | 'week' | 'day' | 'multiday' | 'agenda';
 
@@ -234,7 +236,7 @@ export const CalendarModule: React.FC = () => {
                     const dateStr = format(day, 'yyyy-MM-dd');
                     const isCurrentMonth = isSameMonth(day, cursorDate);
                     const isTodayCell = isSameDay(day, today);
-                    const dayTasks = activeTasks.filter((t) => t.dueDate === dateStr);
+                    const dayTasks = activeTasks.filter((t) => isTaskDueOnDate(t, dateStr));
                     const dayEvents = externalEvents.filter((ev) => ev.date === dateStr);
 
                     return (
@@ -324,7 +326,10 @@ export const CalendarModule: React.FC = () => {
                                     {task.startTime}
                                   </span>
                                 )}
-                                <span className="truncate">{task.title}</span>
+                                <span className="truncate flex-1">{task.title}</span>
+                                {task.recurrenceRule && (
+                                  <Repeat className="w-2.5 h-2.5 shrink-0 opacity-70" />
+                                )}
                               </div>
                             );
                           })}
@@ -369,7 +374,7 @@ export const CalendarModule: React.FC = () => {
                         {cols.map((d) => {
                           const dStr = format(d, 'yyyy-MM-dd');
                           const allDayTasks = activeTasks.filter(
-                            (t) => t.dueDate === dStr && (!t.startTime || t.isAllDay)
+                            (t) => isTaskDueOnDate(t, dStr) && (!t.startTime || t.isAllDay)
                           );
                           return (
                             <div key={dStr} className="p-2 border-r border-zinc-200/80 space-y-1">
@@ -392,9 +397,12 @@ export const CalendarModule: React.FC = () => {
                                   <div
                                     key={t.id}
                                     onClick={() => setSelectedTaskId(t.id)}
-                                    className="px-2 py-0.5 rounded bg-zinc-900 text-white text-[10px] font-medium truncate cursor-pointer"
+                                    className="px-2 py-0.5 rounded bg-zinc-900 text-white text-[10px] font-medium truncate cursor-pointer flex items-center justify-between gap-1"
                                   >
-                                    {t.title}
+                                    <span className="truncate">{t.title}</span>
+                                    {t.recurrenceRule && (
+                                      <Repeat className="w-2.5 h-2.5 shrink-0 opacity-75" />
+                                    )}
                                   </div>
                                 ))}
                               </div>
@@ -421,7 +429,7 @@ export const CalendarModule: React.FC = () => {
                               const dStr = format(d, 'yyyy-MM-dd');
                               const slotTasks = activeTasks.filter(
                                 (t) =>
-                                  t.dueDate === dStr &&
+                                  isTaskDueOnDate(t, dStr) &&
                                   t.startTime &&
                                   t.startTime.startsWith(hrPrefix)
                               );
@@ -466,7 +474,12 @@ export const CalendarModule: React.FC = () => {
                                         </span>
                                         {t.durationMinutes && <span>{t.durationMinutes}m</span>}
                                       </div>
-                                      <div className="truncate font-semibold">{t.title}</div>
+                                      <div className="truncate font-semibold flex items-center justify-between gap-1">
+                                        <span className="truncate">{t.title}</span>
+                                        {t.recurrenceRule && (
+                                          <Repeat className="w-2.5 h-2.5 shrink-0 opacity-75" />
+                                        )}
+                                      </div>
                                     </div>
                                   ))}
                                 </div>
@@ -485,7 +498,7 @@ export const CalendarModule: React.FC = () => {
               <div className="max-w-3xl mx-auto p-3 sm:p-6 space-y-4 sm:space-y-5">
                 {Array.from({ length: 7 }, (_, i) => addDays(cursorDate, i)).map((day) => {
                   const dStr = format(day, 'yyyy-MM-dd');
-                  const dayTasks = activeTasks.filter((t) => t.dueDate === dStr);
+                  const dayTasks = activeTasks.filter((t) => isTaskDueOnDate(t, dStr));
                   const dayEvents = externalEvents.filter((ev) => ev.date === dStr);
 
                   return (
