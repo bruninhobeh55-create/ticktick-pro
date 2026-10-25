@@ -128,6 +128,11 @@ export const CalendarModule: React.FC = () => {
   const [subUrl, setSubUrl] = useState('');
   const [subProvider, setSubProvider] = useState<'google' | 'outlook' | 'apple' | 'ics'>('google');
   const [subError, setSubError] = useState('');
+  // Modo duração ativado por pressionar e segurar (toque); mostra a alça sem abrir o painel
+  const [armedTaskId, setArmedTaskId] = useState<string | null>(null);
+  const pressTimerRef = useRef<number | null>(null);
+  const pressStartRef = useRef<{ x: number; y: number } | null>(null);
+  const suppressBlockClickRef = useRef(false);
   const [quickCellDate, setQuickCellDate] = useState<string | null>(null);
   const [quickCellTitle, setQuickCellTitle] = useState('');
   const [expandedDayDate, setExpandedDayDate] = useState<string | null>(null);
@@ -214,6 +219,7 @@ export const CalendarModule: React.FC = () => {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
+      setArmedTaskId(null);
       if (gestureCleanupRef.current) {
         gestureCleanupRef.current();
         resizeRef.current = null;
@@ -381,12 +387,13 @@ export const CalendarModule: React.FC = () => {
     }
   };
 
-  // Registra listeners globais do mouse e guarda como removê-los (usado no Esc e no unmount)
-  const trackMouse = (onMove: (ev: MouseEvent) => void, onUp: () => void) => {
+  // Registra listeners globais de ponteiro (mouse, toque e caneta) e guarda como removê-los
+  const trackPointer = (onMove: (ev: PointerEvent) => void, onUp: () => void) => {
     gestureCleanupRef.current?.();
     const cleanup = () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', up);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
       gestureCleanupRef.current = null;
     };
     const up = () => {
@@ -394,14 +401,39 @@ export const CalendarModule: React.FC = () => {
       onUp();
     };
     gestureCleanupRef.current = cleanup;
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', up);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  };
+
+  // Pressionar e segurar no toque ativa a alça de duração; não abre o painel da tarefa
+  const LONG_PRESS_MS = 450;
+  const cancelPress = () => {
+    if (pressTimerRef.current !== null) window.clearTimeout(pressTimerRef.current);
+    pressTimerRef.current = null;
+    pressStartRef.current = null;
+  };
+  const handleBlockPointerDown = (e: React.PointerEvent<HTMLDivElement>, taskId: string) => {
+    if (e.pointerType !== 'touch') return;
+    cancelPress();
+    suppressBlockClickRef.current = false;
+    pressStartRef.current = { x: e.clientX, y: e.clientY };
+    pressTimerRef.current = window.setTimeout(() => {
+      pressTimerRef.current = null;
+      suppressBlockClickRef.current = true;
+      setArmedTaskId(taskId);
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate(10);
+    }, LONG_PRESS_MS);
+  };
+  const handleBlockPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const s = pressStartRef.current;
+    if (s && Math.hypot(e.clientX - s.x, e.clientY - s.y) > 10) cancelPress();
   };
 
   // ---------- Alterar duração (bolinha na borda inferior) ----------
 
   const startResize = (
-    e: React.MouseEvent<HTMLDivElement>,
+    e: React.PointerEvent<HTMLDivElement>,
     task: Task,
     startMin: number,
     rowH: number
@@ -423,7 +455,7 @@ export const CalendarModule: React.FC = () => {
     };
     setResizePreview({ taskId: task.id, dur: startDur });
 
-    const onMove = (ev: MouseEvent) => {
+    const onMove = (ev: PointerEvent) => {
       const r = resizeRef.current;
       if (!r) return;
       const deltaMin = ((ev.clientY - r.startY) / r.rowH) * 60;
@@ -437,6 +469,7 @@ export const CalendarModule: React.FC = () => {
       const r = resizeRef.current;
       resizeRef.current = null;
       setResizePreview(null);
+      setArmedTaskId(null);
       if (r && r.dur !== r.startDur) {
         updateTask(
           r.taskId,
@@ -449,7 +482,7 @@ export const CalendarModule: React.FC = () => {
       }
     };
 
-    trackMouse(onMove, onUp);
+    trackPointer(onMove, onUp);
   };
 
   // ---------- Criar tarefa clicando e arrastando na grade ----------
@@ -488,9 +521,11 @@ export const CalendarModule: React.FC = () => {
     return { placed, laneCount: Math.max(1, laneEnds.length) };
   };
 
-  const startColumnDrag = (e: React.MouseEvent<HTMLDivElement>, dateStr: string) => {
+  const startColumnDrag = (e: React.PointerEvent<HTMLDivElement>, dateStr: string) => {
     if (e.button !== 0) return;
     if ((e.target as HTMLElement).closest('[data-block]')) return;
+    setArmedTaskId(null);
+    if (e.pointerType !== 'mouse') return;
     e.preventDefault();
 
     const rect = e.currentTarget.getBoundingClientRect();
@@ -501,7 +536,7 @@ export const CalendarModule: React.FC = () => {
     setCreatePreview(initial);
 
     let moved = false;
-    const onMove = (ev: MouseEvent) => {
+    const onMove = (ev: PointerEvent) => {
       const cur = createRef.current;
       if (!cur) return;
       let endMin = minuteAtY(ev.clientY - rect.top, 'ceil');
@@ -527,7 +562,7 @@ export const CalendarModule: React.FC = () => {
         setCreateTitle('');
       }
     };
-    trackMouse(onMove, onUp);
+    trackPointer(onMove, onUp);
   };
 
   const handleColumnDrop = (e: React.DragEvent<HTMLDivElement>, dateStr: string) => {
@@ -1152,7 +1187,7 @@ export const CalendarModule: React.FC = () => {
                                 dropKey === `col-${dStr}` ? 'bg-blue-50/50' : ''
                               }`}
                               style={{ height: totalHeight }}
-                              onMouseDown={(e) => startColumnDrag(e, dStr)}
+                              onPointerDown={(e) => startColumnDrag(e, dStr)}
                               onClick={(e) => {
                                 if (e.target !== e.currentTarget || suppressClickRef.current) return;
                                 setQuickCellDate(dStr);
@@ -1197,54 +1232,64 @@ export const CalendarModule: React.FC = () => {
                                 const accentColor = getTaskAccentColor(task);
                                 const isSelectedHere = selectedTaskId === task.id;
                                 const isDone = task.status === 'completed';
-                                const canResize = isSelectedHere && !isDone;
+                                const isArmed = armedTaskId === task.id;
+                                const canResize = (isSelectedHere || isArmed) && !isDone;
+                                const timeLabel = `${task.startTime}–${minutesToTime(start + shown)}`;
 
                                 return (
                                   <div
                                     key={task.id}
                                     data-block="task"
                                     {...dragProps(task.id)}
+                                    draggable={!isArmed && !isResizing}
+                                    onPointerDown={(e) => handleBlockPointerDown(e, task.id)}
+                                    onPointerMove={handleBlockPointerMove}
+                                    onPointerUp={cancelPress}
+                                    onPointerCancel={cancelPress}
+                                    onPointerLeave={cancelPress}
+                                    onContextMenu={(e) => e.preventDefault()}
                                     onClick={(e) => {
                                       e.stopPropagation();
+                                      if (suppressBlockClickRef.current) {
+                                        suppressBlockClickRef.current = false;
+                                        return;
+                                      }
+                                      setArmedTaskId(null);
                                       setSelectedCellDate(dStr);
                                       setSelectedTaskId(task.id);
                                     }}
                                     style={{
                                       top: yOf(start),
                                       height: Math.max(hOf(shown) - 2, 2),
-                                      left: `calc(${(lane * 100) / laneCount}% + 4px)`,
-                                      width: `calc(${100 / laneCount}% - 8px)`,
+                                      left: `calc(${(lane * 100) / laneCount}% + 3px)`,
+                                      width: `calc(${100 / laneCount}% - 6px)`,
                                       borderLeftColor: accentColor,
                                     }}
-                                    className={`absolute z-10 overflow-hidden rounded-[4px] border border-l-[3px] px-1.5 py-0.5 text-[11px] leading-tight cursor-grab active:cursor-grabbing transition-colors ${
-                                      isSelectedHere
-                                        ? 'bg-blue-50 border-blue-300 text-blue-950 ring-1 ring-blue-500/30'
-                                        : isDone
-                                          ? 'bg-zinc-50 border-zinc-200/80 text-zinc-400'
-                                          : task.priority === 5
-                                            ? 'bg-rose-50/90 border-rose-200/70 text-rose-950'
-                                            : task.priority === 3
-                                              ? 'bg-amber-50/90 border-amber-200/70 text-amber-950'
-                                              : 'bg-zinc-50/95 hover:bg-zinc-100 border-zinc-200/80 text-zinc-800'
+                                    className={`absolute z-10 overflow-hidden rounded-md border border-l-[3px] bg-white px-2 py-1 text-[11px] leading-tight select-none [-webkit-touch-callout:none] shadow-[0_1px_2px_rgba(24,24,27,0.06)] transition-shadow ${
+                                      isSelectedHere || isArmed
+                                        ? 'border-zinc-200 ring-2 ring-blue-500/20'
+                                        : 'border-zinc-200/80'
+                                    } ${isDone ? 'opacity-60 text-zinc-400' : 'text-zinc-900'} ${
+                                      isArmed ? 'touch-none' : 'cursor-grab active:cursor-grabbing'
                                     }`}
                                   >
+                                    <div className="font-semibold truncate">{task.title}</div>
                                     <div className="font-mono-num text-[10px] text-zinc-500 truncate">
-                                      {task.startTime} – {minutesToTime(start + shown)} · {shown}m
+                                      {isResizing ? `${timeLabel} · ${shown} min` : timeLabel}
                                     </div>
-                                    <div className="truncate font-semibold">{task.title}</div>
 
                                     {canResize && (
                                       <div
                                         role="slider"
                                         aria-label="Alterar duração da tarefa"
+                                        aria-valuetext={`${shown} minutos`}
                                         title="Arraste para aumentar ou diminuir a duração"
-                                        data-block="handle"
-                                        onMouseDown={(e) => startResize(e, task, start, rowHeight)}
+                                        onPointerDown={(e) => startResize(e, task, start, rowHeight)}
                                         onClick={(e) => e.stopPropagation()}
                                         onDragStart={(e) => e.preventDefault()}
-                                        className="absolute left-0 right-0 bottom-0 h-4 cursor-ns-resize flex items-end justify-center bg-blue-500/20 hover:bg-blue-500/40 transition-colors"
+                                        className="group absolute inset-x-0 bottom-0 h-5 flex items-end justify-center cursor-ns-resize touch-none"
                                       >
-                                        <span className="w-4 h-4 rounded-full bg-blue-600 border-2 border-white shadow-md mb-0.5" />
+                                        <span className="mb-1 h-1 w-5 rounded-full bg-zinc-300 group-hover:bg-blue-500 transition-colors" />
                                       </div>
                                     )}
                                   </div>
