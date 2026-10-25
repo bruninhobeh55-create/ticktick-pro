@@ -13,6 +13,7 @@ import {
   Palette,
   RefreshCw,
   Settings,
+  Sparkles,
   Smartphone,
   UploadCloud,
   X,
@@ -24,6 +25,7 @@ import {
   getSupabaseConfig,
 } from '../lib/supabase';
 import { ThemeId } from '../types';
+import { GeminiSettingsPanel } from './GeminiSettingsPanel';
 import {
   checkNotificationDiagnostic,
   NotificationDiagnostic,
@@ -602,7 +604,7 @@ ALTER TABLE public.tasks DISABLE ROW LEVEL SECURITY;`}
               )}
             </div>
           )}
-
+          {settingsInitialTab === 'gemini' && <GeminiSettingsPanel />}
           {settingsInitialTab === 'shortcuts' && (
             <div className="space-y-2 text-xs">
               {[
