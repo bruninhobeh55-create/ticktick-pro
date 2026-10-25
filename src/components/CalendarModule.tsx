@@ -133,6 +133,11 @@ export const CalendarModule: React.FC = () => {
   const pressTimerRef = useRef<number | null>(null);
   const pressStartRef = useRef<{ x: number; y: number } | null>(null);
   const suppressBlockClickRef = useRef(false);
+  // Preview de onde a tarefa vai cair ao soltar (mouse arrasta direto; toque depois de segurar)
+  type MovePreview = { taskId: string; dayStr: string; startMin: number; dur: number };
+  const [movePreview, setMovePreview] = useState<MovePreview | null>(null);
+  const movePreviewRef = useRef<MovePreview | null>(null);
+  const moveGestureRef = useRef<{ taskId: string; grab: number; x0: number; y0: number; moved: boolean; dur: number } | null>(null);
   const [quickCellDate, setQuickCellDate] = useState<string | null>(null);
   const [quickCellTitle, setQuickCellTitle] = useState('');
   const [expandedDayDate, setExpandedDayDate] = useState<string | null>(null);
@@ -158,6 +163,13 @@ export const CalendarModule: React.FC = () => {
 
   const today = startOfToday();
   const todayStr = format(today, 'yyyy-MM-dd');
+  // Hora atual para a linha vermelha; atualiza a cada 30 s
+  const [nowTick, setNowTick] = useState<Date>(() => new Date());
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick(new Date()), 30000);
+    return () => window.clearInterval(id);
+  }, []);
+  const nowMin = nowTick.getHours() * 60 + nowTick.getMinutes();
 
   const activeTasks = useMemo(
     () => tasks.filter((t) => t.status !== 'trash' && t.status !== 'wont_do'),
@@ -226,6 +238,8 @@ export const CalendarModule: React.FC = () => {
         createRef.current = null;
         setResizePreview(null);
         setCreatePreview(null);
+        setMovePreviewBoth(null);
+        moveGestureRef.current = null;
         return;
       }
       if (createModal) setCreateModal(null);
@@ -413,17 +427,78 @@ export const CalendarModule: React.FC = () => {
     pressTimerRef.current = null;
     pressStartRef.current = null;
   };
-  const handleBlockPointerDown = (e: React.PointerEvent<HTMLDivElement>, taskId: string) => {
-    if (e.pointerType !== 'touch') return;
+  const setMovePreviewBoth = (p: MovePreview | null) => {
+    movePreviewRef.current = p;
+    setMovePreview(p);
+  };
+
+  const onMoveGesture = (ev: PointerEvent) => {
+    const g = moveGestureRef.current;
+    if (!g) return;
+    if (!g.moved) {
+      if (Math.hypot(ev.clientX - g.x0, ev.clientY - g.y0) < 5) return;
+      g.moved = true;
+    }
+    const colEl = (document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null)?.closest<HTMLElement>('[data-day-col]');
+    if (!colEl) {
+      setMovePreviewBoth(null);
+      return;
+    }
+    const dayStr = colEl.dataset.dayCol ?? '';
+    const raw = minuteAtY(ev.clientY - colEl.getBoundingClientRect().top, 'floor') - g.grab;
+    const startMin = Math.min(
+      Math.max(Math.round(raw / SNAP_MINUTES) * SNAP_MINUTES, dayRange.startHour * 60),
+      dayRange.endHour * 60 - g.dur
+    );
+    setMovePreviewBoth({ taskId: g.taskId, dayStr, startMin, dur: g.dur });
+  };
+
+  const onUpGesture = () => {
+    const g = moveGestureRef.current;
+    const p = movePreviewRef.current;
+    moveGestureRef.current = null;
+    setMovePreviewBoth(null);
+    if (!g || !g.moved || !p) return;
+    // Evita que o clique que segue o arraste abra o painel ou o criador rápido
+    suppressBlockClickRef.current = true;
+    suppressClickRef.current = true;
+    setTimeout(() => {
+      suppressBlockClickRef.current = false;
+      suppressClickRef.current = false;
+    }, 0);
+    scheduleTaskAt(g.taskId, p.dayStr, minutesToTime(p.startMin));
+    setArmedTaskId(null);
+  };
+
+  const startMoveGesture = (taskId: string, grab: number, x0: number, y0: number) => {
+    const t = tasks.find((x) => x.id === taskId);
+    if (!t) return;
+    moveGestureRef.current = { taskId, grab, x0, y0, moved: false, dur: Math.max(MIN_DURATION, t.durationMinutes || 60) };
+    trackPointer(onMoveGesture, onUpGesture);
+  };
+
+  // Mouse: arrasta direto. Toque: só depois de pressionar e segurar (o bloco fica ativo).
+  const handleBlockPointerDown = (e: React.PointerEvent<HTMLDivElement>, task: Task, startMinute: number) => {
+    if (e.button !== 0) return;
+    const colEl = e.currentTarget.closest<HTMLElement>('[data-day-col]');
+    // Onde dentro do bloco o usuário pegou: mantém esse ponto ao soltar
+    const grab = colEl ? minuteAtY(e.clientY - colEl.getBoundingClientRect().top, 'floor') - startMinute : 0;
     cancelPress();
     suppressBlockClickRef.current = false;
-    pressStartRef.current = { x: e.clientX, y: e.clientY };
-    pressTimerRef.current = window.setTimeout(() => {
-      pressTimerRef.current = null;
-      suppressBlockClickRef.current = true;
-      setArmedTaskId(taskId);
-      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate(10);
-    }, LONG_PRESS_MS);
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    if (e.pointerType === 'touch') {
+      pressStartRef.current = { x: x0, y: y0 };
+      pressTimerRef.current = window.setTimeout(() => {
+        pressTimerRef.current = null;
+        suppressBlockClickRef.current = true;
+        setArmedTaskId(task.id);
+        if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate(10);
+        startMoveGesture(task.id, grab, x0, y0);
+      }, LONG_PRESS_MS);
+      return;
+    }
+    startMoveGesture(task.id, grab, x0, y0);
   };
   const handleBlockPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const s = pressStartRef.current;
@@ -1187,6 +1262,7 @@ export const CalendarModule: React.FC = () => {
                                 dropKey === `col-${dStr}` ? 'bg-blue-50/50' : ''
                               }`}
                               style={{ height: totalHeight }}
+                              data-day-col={dStr}
                               onPointerDown={(e) => startColumnDrag(e, dStr)}
                               onClick={(e) => {
                                 if (e.target !== e.currentTarget || suppressClickRef.current) return;
@@ -1241,8 +1317,8 @@ export const CalendarModule: React.FC = () => {
                                     key={task.id}
                                     data-block="task"
                                     {...dragProps(task.id)}
-                                    draggable={!isArmed && !isResizing}
-                                    onPointerDown={(e) => handleBlockPointerDown(e, task.id)}
+                                    draggable={false}
+                                    onPointerDown={(e) => handleBlockPointerDown(e, task, start)}
                                     onPointerMove={handleBlockPointerMove}
                                     onPointerUp={cancelPress}
                                     onPointerCancel={cancelPress}
@@ -1270,7 +1346,7 @@ export const CalendarModule: React.FC = () => {
                                         ? 'border-zinc-200 ring-2 ring-blue-500/20'
                                         : 'border-zinc-200/80'
                                     } ${isDone ? 'opacity-60 text-zinc-400' : 'text-zinc-900'} ${
-                                      isArmed ? 'touch-none' : 'cursor-grab active:cursor-grabbing'
+                                      isArmed ? 'touch-none' : 'cursor-grab active:cursor-grabbing'} ${movePreview?.taskId === task.id ? 'opacity-40' : ''
                                     }`}
                                   >
                                     <div className="font-semibold truncate">{task.title}</div>
@@ -1295,6 +1371,37 @@ export const CalendarModule: React.FC = () => {
                                   </div>
                                 );
                               })}
+
+                              {movePreview && movePreview.dayStr === dStr && (() => {
+                                const mt = tasks.find((t) => t.id === movePreview.taskId);
+                                if (!mt) return null;
+                                return (
+                                  <div
+                                    style={{
+                                      top: yOf(movePreview.startMin),
+                                      height: Math.max(hOf(movePreview.dur) - 2, 2),
+                                    }}
+                                    className="absolute left-[3px] right-[3px] z-20 pointer-events-none overflow-hidden rounded-md border border-l-[3px] border-blue-400 bg-blue-100/70 px-2 py-1 text-[11px] leading-tight shadow-[0_0_0_1px_rgba(59,130,246,0.25)]"
+                                  >
+                                    <div className="font-semibold truncate text-blue-950">{mt.title}</div>
+                                    <div className="font-mono-num text-[10px] text-blue-800 truncate">
+                                      {minutesToTime(movePreview.startMin)}–{minutesToTime(movePreview.startMin + movePreview.dur)}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+
+                              {dStr === todayStr && nowMin >= dayRange.startHour * 60 && nowMin <= dayRange.endHour * 60 && (
+                                <div
+                                  className="absolute left-0 right-0 z-30 pointer-events-none"
+                                  style={{ top: yOf(nowMin) }}
+                                  aria-hidden="true"
+                                >
+                                  <div className="relative h-px bg-red-500">
+                                    <span className="absolute -left-[3px] -top-[3px] h-[7px] w-[7px] rounded-full bg-red-500" />
+                                  </div>
+                                </div>
+                              )}
 
                               {createPreview && createPreview.dateStr === dStr && (
                                 <div
