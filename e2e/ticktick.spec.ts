@@ -51,6 +51,21 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
     const firstTask = page.locator('[data-testid="task-item"]').first();
     await firstTask.click();
     await expect(page.locator('[aria-label="Resize Right Inspector"]')).toBeVisible();
+
+    // Verify Priority dropdown menu opens cleanly without clipping and can change priority
+    const priorityButton = page.locator('button[aria-label="Task Priority"]');
+    await expect(priorityButton).toBeVisible();
+    await priorityButton.click();
+    await expect(page.getByRole('button', { name: 'High Priority' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Medium' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Low Priority' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'No Priority' })).toBeVisible();
+    // Select Low Priority and Save
+    await page.getByRole('button', { name: 'Low Priority' }).click();
+    await expect(page.getByRole('button', { name: 'High Priority' })).toHaveCount(0);
+    await expect(priorityButton).toContainText('P1');
+    await page.locator('button[aria-label="Save Task Changes"]').click();
+
     await page.getByRole('button', { name: 'Test Alert' }).first().click();
     await expect(page.locator('[role="alertdialog"]')).toBeVisible();
     await page.getByRole('button', { name: 'Dismiss', exact: true }).click();
@@ -71,7 +86,7 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
     await expect(page.getByText('View Type')).toBeVisible();
     const listModalInput = page.locator('form input[placeholder="Name"]');
     await listModalInput.fill('Q4 Launch Renamed');
-    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await page.locator('form').getByRole('button', { name: 'Save', exact: true }).click();
     await expect(page.getByText('Q4 Launch Renamed').first()).toBeVisible();
 
     // Delete a Tag via Three-Dots (...) Menu
