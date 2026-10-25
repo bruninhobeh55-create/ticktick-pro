@@ -26,6 +26,8 @@ import {
   Repeat,
   Sparkles,
   X,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { TaskDetailPane } from './TaskDetailPane';
@@ -36,6 +38,37 @@ type CalendarSubView = 'month' | 'week' | 'day' | 'multiday' | 'agenda';
 
 const MAX_MONTH_VISIBLE = 3;
 const MAX_ALLDAY_VISIBLE = 2;
+const BASE_ROW_HEIGHT = 54;
+const SNAP_MINUTES = 15;
+const RANGE_KEY = 'ticktick_calendar_range';
+
+const pad = (n: number) => String(n).padStart(2, '0');
+const minutesToTime = (m: number) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
+const clampZoom = (v: number) => Math.min(2.5, Math.max(0.5, Math.round(v * 10) / 10));
+
+interface DayRange {
+  startHour: number;
+  endHour: number;
+}
+
+function loadDayRange(): DayRange {
+  try {
+    const raw = localStorage.getItem(RANGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as DayRange;
+      if (
+        typeof parsed.startHour === 'number' &&
+        typeof parsed.endHour === 'number' &&
+        parsed.endHour > parsed.startHour
+      ) {
+        return parsed;
+      }
+    }
+  } catch {
+    // ignora erro de leitura
+  }
+  return { startHour: 0, endHour: 24 };
+}
 
 export const CalendarModule: React.FC = () => {
   const {
@@ -67,76 +100,12 @@ export const CalendarModule: React.FC = () => {
   const [expandedDayNewTitle, setExpandedDayNewTitle] = useState('');
   const [selectedCellDate, setSelectedCellDate] = useState<string | null>(null);
 
-  // NOVO: hora atual, atualizada a cada minuto
-  const [now, setNow] = useState<Date>(() => new Date());
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(new Date()), 60_000);
-    return () => window.clearInterval(id);
-  }, []);
-
-  // ---- Arrastar para criar tarefa ----
-  const SLOT = 15; // cada faixa do grid vale 15 minutos
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const toHM = (m: number) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
-
-  type DragRange = { date: string; start: number; end: number }; // em minutos desde 00:00
-  const [drag, setDrag] = useState<DragRange | null>(null);
-  const [quickRange, setQuickRange] = useState<{ start: number; end: number } | null>(null);
-  const dragRef = useRef<DragRange | null>(null);
-
-  const closeQuick = () => {
-    setQuickCellDate(null);
-    setQuickRange(null);
-  };
-
-  const startDragCreate = (e: React.PointerEvent, dStr: string, anchor: number) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-
-    let moved = false;
-    const first: DragRange = { date: dStr, start: anchor, end: anchor + SLOT };
-    dragRef.current = first;
-    setDrag(first);
-
-    const onMove = (ev: PointerEvent) => {
-      const slot = (document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null)
-        ?.closest<HTMLElement>('[data-slot-min]');
-      // o arrasto fica restrito ao dia onde começou
-      if (!slot || slot.dataset.date !== dStr) return;
-
-      const m = Number(slot.dataset.slotMin);
-      if (m !== anchor) moved = true;
-
-      const next: DragRange =
-        m >= anchor
-          ? { date: dStr, start: anchor, end: m + SLOT }
-          : { date: dStr, start: m, end: anchor + SLOT };
-
-      dragRef.current = next;
-      setDrag(next);
-    };
-
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-
-      const r = dragRef.current;
-      dragRef.current = null;
-      setDrag(null);
-      if (!r) return;
-
-      // clique sem arrastar: cria um bloco de 1 hora
-      const end = moved ? r.end : r.start + 60;
-      setQuickRange({ start: r.start, end });
-      setQuickCellDate(dStr);
-    };
-
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-  };
-
-  // NOVO: minutos desde 00:00 da hora atual
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  // Novos estados: horário visível, zoom e arrastar
+  const [dayRange, setDayRange] = useState<DayRange>(() => loadDayRange());
+  const [zoom, setZoom] = useState<number>(1);
+  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
+  const [dropKey, setDropKey] = useState<string | null>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
 
   const today = startOfToday();
   const todayStr = format(today, 'yyyy-MM-dd');
@@ -164,6 +133,29 @@ export const CalendarModule: React.FC = () => {
         ),
     [calendarSubscriptions]
   );
+
+  // Salva o horário visível no navegador
+  useEffect(() => {
+    try {
+      localStorage.setItem(RANGE_KEY, JSON.stringify(dayRange));
+    } catch {
+      // ignora
+    }
+  }, [dayRange]);
+
+  // Zoom só do calendário: Ctrl + roda do mouse dentro da grade
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      setZoom((z) => clampZoom(z + delta));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
 
   const sortDayTasks = (dayTaskList: Task[]): Task[] => {
     return [...dayTaskList].sort((a, b) => {
@@ -209,7 +201,13 @@ export const CalendarModule: React.FC = () => {
     [cursorDate]
   );
 
-  const hours = Array.from({ length: 14 }, (_, i) => i + 7); // 07:00 to 20:00
+  // Horas visíveis conforme o horário escolhido na barra
+  const hours = useMemo(
+    () => Array.from({ length: dayRange.endHour - dayRange.startHour }, (_, i) => dayRange.startHour + i),
+    [dayRange]
+  );
+
+  const rowHeight = Math.round(BASE_ROW_HEIGHT * zoom);
 
   const handleNavigate = (dir: -1 | 1) => {
     if (subView === 'month') {
@@ -223,6 +221,102 @@ export const CalendarModule: React.FC = () => {
     }
   };
 
+  // ---------- Arrastar e soltar ----------
+
+  const dragProps = (taskId: string) => ({
+    draggable: true,
+    onDragStart: (e: React.DragEvent<HTMLElement>) => {
+      e.dataTransfer.setData('text/plain', taskId);
+      e.dataTransfer.effectAllowed = 'move';
+      setDraggingTaskId(taskId);
+    },
+    onDragEnd: () => {
+      setDraggingTaskId(null);
+      setDropKey(null);
+    },
+  });
+
+  // Move a tarefa para um dia (visão mensal e cabeçalho "dia inteiro")
+  const scheduleTaskAllDay = (taskId: string, dateStr: string) => {
+    updateTask(
+      taskId,
+      {
+        dueDate: dateStr,
+        startDate: dateStr,
+        isAllDay: true,
+        startTime: undefined,
+        endTime: undefined,
+      },
+      `Movido para ${format(parseISO(dateStr), 'dd/MM/yyyy')} (dia inteiro)`
+    );
+  };
+
+  // Agenda a tarefa em um dia e horário, mantendo a duração
+  const scheduleTaskAt = (taskId: string, dateStr: string, timeStr: string) => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+    const duration = task.durationMinutes || 60;
+    const [h, m] = timeStr.split(':').map(Number);
+    const endTime = minutesToTime(Math.min(h * 60 + m + duration, 23 * 60 + 59));
+    updateTask(
+      taskId,
+      {
+        dueDate: dateStr,
+        startDate: dateStr,
+        isAllDay: false,
+        startTime: timeStr,
+        endTime,
+        durationMinutes: duration,
+      },
+      `Movido para ${format(parseISO(dateStr), 'dd/MM/yyyy')} às ${timeStr}`
+    );
+  };
+
+  const handleSlotDragOver = (e: React.DragEvent<HTMLDivElement>, key: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dropKey !== key) setDropKey(key);
+  };
+
+  // Soltou em um quadradinho de hora: calcula os minutos pela posição do mouse
+  const handleSlotDrop = (e: React.DragEvent<HTMLDivElement>, dateStr: string, hour: number) => {
+    e.preventDefault();
+    const taskId = e.dataTransfer.getData('text/plain') || draggingTaskId;
+    setDropKey(null);
+    setDraggingTaskId(null);
+    if (!taskId) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = Math.min(0.999, Math.max(0, (e.clientY - rect.top) / rect.height));
+    let snapped = Math.round((ratio * 60) / SNAP_MINUTES) * SNAP_MINUTES;
+    if (snapped >= 60) snapped = 60 - SNAP_MINUTES;
+
+    scheduleTaskAt(taskId, dateStr, `${pad(hour)}:${pad(snapped)}`);
+  };
+
+  const handleAllDayDrop = (e: React.DragEvent<HTMLDivElement>, dateStr: string) => {
+    e.preventDefault();
+    const taskId = e.dataTransfer.getData('text/plain') || draggingTaskId;
+    setDraggingTaskId(null);
+    setDropKey(null);
+    if (taskId) scheduleTaskAllDay(taskId, dateStr);
+  };
+
+  const handleMonthDrop = (e: React.DragEvent<HTMLDivElement>, dateStr: string) => {
+    e.preventDefault();
+    const taskId = e.dataTransfer.getData('text/plain') || draggingTaskId;
+    setDraggingTaskId(null);
+    if (!taskId) return;
+    const task = tasks.find((t) => t.id === taskId);
+    if (task?.startTime && !task.isAllDay) {
+      scheduleTaskAt(taskId, dateStr, task.startTime);
+    } else {
+      scheduleTaskAllDay(taskId, dateStr);
+    }
+  };
+
+  // ---------- Criação rápida ----------
+
   const handleCreateOnDate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!quickCellDate || !quickCellTitle.trim()) return;
@@ -231,17 +325,9 @@ export const CalendarModule: React.FC = () => {
       dueDate: quickCellDate,
       startDate: quickCellDate,
       listId: 'inbox',
-      ...(quickRange
-        ? {
-            startTime: toHM(quickRange.start),
-            endTime: toHM(quickRange.end),
-            durationMinutes: quickRange.end - quickRange.start,
-            isAllDay: false,
-          }
-        : {}),
     });
     setQuickCellTitle('');
-    closeQuick();
+    setQuickCellDate(null);
   };
 
   const handleCreateInExpandedDay = (e: React.FormEvent) => {
@@ -285,10 +371,12 @@ export const CalendarModule: React.FC = () => {
     return format(cursorDate, 'MMMM yyyy');
   }, [cursorDate, subView]);
 
+  const showTimeToolbar = subView === 'week' || subView === 'multiday' || subView === 'day';
+
   return (
     <div className="flex-1 flex h-full min-w-0 bg-white">
       <div className="flex-1 flex flex-col h-full min-w-0">
-        {/* Calendar Header — Clean Date Range + Chevrons (No redundant Today button) */}
+        {/* Cabeçalho do calendário */}
         <header className="min-h-12 md:h-13 py-2 md:py-0 px-3 sm:px-5 border-b border-zinc-200/80 flex flex-wrap items-center justify-between gap-2 shrink-0">
           <div className="flex items-center justify-between w-full md:w-auto gap-2.5">
             <div className="flex items-center gap-1.5 min-w-0">
@@ -318,7 +406,6 @@ export const CalendarModule: React.FC = () => {
             </div>
           </div>
 
-          {/* 5 Calendar View Switcher + External Calendar Sync + Unscheduled Drawer Toggle */}
           <div className="flex items-center justify-between w-full md:w-auto gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar">
             <div className="inline-flex bg-zinc-100 p-0.5 rounded-lg border border-zinc-200/70 shrink-0">
               {(
@@ -368,10 +455,76 @@ export const CalendarModule: React.FC = () => {
           </div>
         </header>
 
-        {/* Calendar Body + Optional Unscheduled Drawer */}
+        {/* Barra de horário visível e zoom (só nas visões de horas) */}
+        {showTimeToolbar && (
+          <div className="px-3 sm:px-5 py-2 border-b border-zinc-200/80 bg-zinc-50/60 flex flex-wrap items-center justify-between gap-2 shrink-0">
+            <div className="flex items-center gap-2 text-[11px] text-zinc-600">
+              <Clock className="w-3.5 h-3.5 text-zinc-500" strokeWidth={1.75} />
+              <span>Horário visível:</span>
+              <select
+                value={dayRange.startHour}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  setDayRange((prev) => ({ startHour: v, endHour: Math.max(v + 1, prev.endHour) }));
+                }}
+                className="px-1.5 py-0.5 rounded-md border border-zinc-300 bg-white font-mono-num"
+              >
+                {Array.from({ length: 24 }, (_, h) => (
+                  <option key={h} value={h}>
+                    {pad(h)}:00
+                  </option>
+                ))}
+              </select>
+              <span>até</span>
+              <select
+                value={dayRange.endHour}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  setDayRange((prev) => ({ startHour: prev.startHour, endHour: Math.max(v, prev.startHour + 1) }));
+                }}
+                className="px-1.5 py-0.5 rounded-md border border-zinc-300 bg-white font-mono-num"
+              >
+                {Array.from({ length: 24 }, (_, i) => i + 1).map((h) => (
+                  <option key={h} value={h}>
+                    {pad(h)}:00
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-center gap-1.5 text-[11px] text-zinc-600">
+              <span className="hidden md:inline text-zinc-400 mr-1">Ctrl + roda do mouse para zoom</span>
+              <button
+                type="button"
+                onClick={() => setZoom((z) => clampZoom(z - 0.1))}
+                title="Diminuir zoom do calendário"
+                className="p-1 rounded-md border border-zinc-300 bg-white hover:bg-zinc-100"
+              >
+                <ZoomOut className="w-3.5 h-3.5" strokeWidth={1.75} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setZoom(1)}
+                title="Voltar ao tamanho normal"
+                className="px-2 py-0.5 rounded-md border border-zinc-300 bg-white font-mono-num min-w-[52px]"
+              >
+                {Math.round(zoom * 100)}%
+              </button>
+              <button
+                type="button"
+                onClick={() => setZoom((z) => clampZoom(z + 0.1))}
+                title="Aumentar zoom do calendário"
+                className="p-1 rounded-md border border-zinc-300 bg-white hover:bg-zinc-100"
+              >
+                <ZoomIn className="w-3.5 h-3.5" strokeWidth={1.75} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Corpo do calendário + gaveta de tarefas não agendadas */}
         <div className="flex-1 flex min-h-0 overflow-hidden">
-          {/* Main Calendar Grid */}
-          <div className="flex-1 overflow-y-auto">
+          <div ref={gridRef} className="flex-1 overflow-y-auto">
             {subView === 'month' && (
               <div className="flex flex-col h-full min-h-[620px]">
                 <div className="grid grid-cols-7 border-b border-zinc-200/80 bg-zinc-50/80 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
@@ -393,7 +546,6 @@ export const CalendarModule: React.FC = () => {
                     );
                     const dayEvents = externalEvents.filter((ev) => ev.date === dateStr);
 
-                    // Combine events + tasks with a strict visual cap of MAX_MONTH_VISIBLE (3)
                     type CombinedItem =
                       | { kind: 'event'; id: string; title: string; time?: string; color: string }
                       | { kind: 'task'; task: Task };
@@ -419,6 +571,11 @@ export const CalendarModule: React.FC = () => {
                       <div
                         key={dateStr}
                         onClick={() => setQuickCellDate(dateStr)}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = 'move';
+                        }}
+                        onDrop={(e) => handleMonthDrop(e, dateStr)}
                         className={`group min-h-[78px] sm:min-h-[112px] p-1.5 border-b border-r border-zinc-200/60 flex flex-col cursor-pointer transition-colors ${
                           !isCurrentMonth
                             ? 'bg-zinc-50/60 text-zinc-400'
@@ -427,7 +584,6 @@ export const CalendarModule: React.FC = () => {
                               : 'bg-white hover:bg-zinc-50/50'
                         }`}
                       >
-                        {/* Cell Top Row: Date Number + Quiet Task Count / Quick Add */}
                         <div className="flex items-center justify-between mb-1.5">
                           <span
                             className={`text-xs font-mono-num w-6 h-6 rounded-md flex items-center justify-center ${
@@ -462,13 +618,11 @@ export const CalendarModule: React.FC = () => {
                           </div>
                         </div>
 
-                        {/* Mobile Clean Dots (<640px) */}
+                        {/* Celular: bolinhas */}
                         <div className="sm:hidden flex items-center justify-center gap-1 mt-1">
                           {combinedItems.slice(0, 4).map((item, idx) => {
                             const dotColor =
-                              item.kind === 'event'
-                                ? item.color
-                                : getTaskAccentColor(item.task);
+                              item.kind === 'event' ? item.color : getTaskAccentColor(item.task);
                             return (
                               <span
                                 key={idx}
@@ -484,7 +638,7 @@ export const CalendarModule: React.FC = () => {
                           )}
                         </div>
 
-                        {/* Tablet/Desktop Flat Typographic Bars — Capped at 3, Zero Scrollbars */}
+                        {/* Tablet/PC: barras */}
                         <div className="hidden sm:flex flex-col gap-1 flex-1">
                           {visibleItems.map((item) => {
                             if (item.kind === 'event') {
@@ -513,13 +667,14 @@ export const CalendarModule: React.FC = () => {
                             return (
                               <div
                                 key={task.id}
+                                {...dragProps(task.id)}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setSelectedCellDate(dateStr);
                                   setSelectedTaskId(task.id);
                                 }}
                                 style={{ borderLeftColor: accentColor }}
-                                className={`h-[21px] px-1.5 rounded-[4px] border-l-[2.5px] text-[11px] leading-none flex items-center gap-1.5 transition-colors ${
+                                className={`h-[21px] px-1.5 rounded-[4px] border-l-[2.5px] text-[11px] leading-none flex items-center gap-1.5 transition-colors cursor-grab active:cursor-grabbing ${
                                   isSelectedHere
                                     ? 'bg-blue-50/95 text-blue-950 ring-1 ring-blue-500/30 font-semibold'
                                     : isDone
@@ -544,7 +699,6 @@ export const CalendarModule: React.FC = () => {
                             );
                           })}
 
-                          {/* Overflow Summary Pill (+N more) */}
                           {hiddenItems.length > 0 && (
                             <button
                               type="button"
@@ -559,9 +713,7 @@ export const CalendarModule: React.FC = () => {
                               <span className="flex items-center gap-0.5">
                                 {hiddenItems.slice(0, 4).map((hi, idx) => {
                                   const c =
-                                    hi.kind === 'event'
-                                      ? hi.color
-                                      : getTaskAccentColor(hi.task);
+                                    hi.kind === 'event' ? hi.color : getTaskAccentColor(hi.task);
                                   return (
                                     <span
                                       key={idx}
@@ -593,17 +745,13 @@ export const CalendarModule: React.FC = () => {
               >
                 {(() => {
                   const cols =
-                    subView === 'week'
-                      ? weekDays
-                      : subView === 'multiday'
-                        ? multiDays
-                        : [cursorDate];
+                    subView === 'week' ? weekDays : subView === 'multiday' ? multiDays : [cursorDate];
 
                   const allDayCap = subView === 'day' ? 5 : MAX_ALLDAY_VISIBLE;
 
                   return (
                     <>
-                      {/* Column Headers + Compact All-Day Row */}
+                      {/* Cabeçalho com dias + linha "Dia inteiro" */}
                       <div
                         style={{
                           gridTemplateColumns: `64px repeat(${cols.length}, minmax(0, 1fr))`,
@@ -618,19 +766,19 @@ export const CalendarModule: React.FC = () => {
                           const dayAllTasks = sortDayTasks(
                             activeTasks.filter((t) => isTaskDueOnDate(t, dStr))
                           );
-                          const allDayTasks = dayAllTasks.filter(
-                            (t) => !t.startTime || t.isAllDay
-                          );
+                          const allDayTasks = dayAllTasks.filter((t) => !t.startTime || t.isAllDay);
                           const visibleAllDay = allDayTasks.slice(0, allDayCap);
-                          const hiddenAllDayCount = Math.max(
-                            0,
-                            allDayTasks.length - visibleAllDay.length
-                          );
+                          const hiddenAllDayCount = Math.max(0, allDayTasks.length - visibleAllDay.length);
+                          const allDayKey = `allday-${dStr}`;
 
                           return (
                             <div
                               key={dStr}
-                              className="p-2 border-r border-zinc-200/80 flex flex-col gap-1 min-w-0"
+                              onDragOver={(e) => handleSlotDragOver(e, allDayKey)}
+                              onDrop={(e) => handleAllDayDrop(e, dStr)}
+                              className={`p-2 border-r border-zinc-200/80 flex flex-col gap-1 min-w-0 transition-colors ${
+                                dropKey === allDayKey ? 'bg-blue-50' : ''
+                              }`}
                             >
                               <div className="flex items-center justify-between gap-1">
                                 <div className="flex items-center gap-1.5 min-w-0">
@@ -668,12 +816,13 @@ export const CalendarModule: React.FC = () => {
                                     return (
                                       <div
                                         key={t.id}
+                                        {...dragProps(t.id)}
                                         onClick={() => {
                                           setSelectedCellDate(dStr);
                                           setSelectedTaskId(t.id);
                                         }}
                                         style={{ borderLeftColor: accentColor }}
-                                        className={`h-[21px] px-1.5 rounded-[4px] border border-zinc-200/70 border-l-[2.5px] text-[10px] font-medium truncate cursor-pointer flex items-center justify-between gap-1 transition-colors ${
+                                        className={`h-[21px] px-1.5 rounded-[4px] border border-zinc-200/70 border-l-[2.5px] text-[10px] font-medium truncate cursor-grab active:cursor-grabbing flex items-center justify-between gap-1 transition-colors ${
                                           isSelectedHere
                                             ? 'bg-blue-50 text-blue-950 ring-1 ring-blue-500/30 font-semibold'
                                             : t.status === 'completed'
@@ -705,27 +854,30 @@ export const CalendarModule: React.FC = () => {
                         })}
                       </div>
 
-                      {/* Hourly Time-Blocking Rows */}
+                      {/* Linhas de hora (altura muda com o zoom) */}
                       {hours.map((hr) => {
-                        const hrPrefix = String(hr).padStart(2, '0');
+                        const hrPrefix = pad(hr);
                         return (
                           <div
                             key={hr}
                             style={{
                               gridTemplateColumns: `64px repeat(${cols.length}, minmax(0, 1fr))`,
+                              minHeight: rowHeight,
                             }}
-                            className="grid border-b border-zinc-100 min-h-[54px]"
+                            className="grid border-b border-zinc-100"
                           >
                             <div className="px-2 py-1 text-[10px] font-mono-num text-zinc-400 border-r border-zinc-200/80 text-right">
                               {hrPrefix}:00
                             </div>
                             {cols.map((d) => {
                               const dStr = format(d, 'yyyy-MM-dd');
+                              const slotKey = `${dStr}-${hr}`;
                               const slotTasks = sortDayTasks(
                                 activeTasks.filter(
                                   (t) =>
                                     isTaskDueOnDate(t, dStr) &&
                                     t.startTime &&
+                                    !t.isAllDay &&
                                     t.startTime.startsWith(hrPrefix)
                                 )
                               );
@@ -735,132 +887,85 @@ export const CalendarModule: React.FC = () => {
 
                               const maxHourlyVisible = subView === 'day' ? 6 : 2;
                               const visibleSlotTasks = slotTasks.slice(0, maxHourlyVisible);
-                              const hiddenSlotCount = Math.max(
-                                0,
-                                slotTasks.length - visibleSlotTasks.length
-                              );
+                              const hiddenSlotCount = Math.max(0, slotTasks.length - visibleSlotTasks.length);
 
                               return (
                                 <div
-                                  key={`${dStr}-${hr}`}
-                                  className="relative border-r border-zinc-100 min-w-0 min-h-[64px]"
+                                  key={slotKey}
+                                  onClick={() => setQuickCellDate(dStr)}
+                                  onDragOver={(e) => handleSlotDragOver(e, slotKey)}
+                                  onDrop={(e) => handleSlotDrop(e, dStr, hr)}
+                                  className={`p-1 border-r border-zinc-100 space-y-1 cursor-pointer min-w-0 transition-colors ${
+                                    dropKey === slotKey
+                                      ? 'bg-blue-50 ring-1 ring-inset ring-blue-400'
+                                      : 'hover:bg-zinc-50/60'
+                                  }`}
                                 >
-                                  {/* Camada de captura: 4 faixas de 15 min, atrás do conteúdo */}
-                                  <div className="absolute inset-0 flex flex-col z-0">
-                                    {[0, 1, 2, 3].map((q) => {
-                                      const m = hr * 60 + q * SLOT;
-                                      return (
-                                        <div
-                                          key={q}
-                                          data-slot-min={m}
-                                          data-date={dStr}
-                                          onPointerDown={(e) => startDragCreate(e, dStr, m)}
-                                          className="flex-1 hover:bg-zinc-50/70 cursor-crosshair"
-                                        />
-                                      );
-                                    })}
-                                  </div>
-
-                                  {/* Prévia do bloco que está sendo arrastado */}
-                                  {drag &&
-                                    drag.date === dStr &&
-                                    (() => {
-                                      const from = Math.max(drag.start, hr * 60);
-                                      const to = Math.min(drag.end, hr * 60 + 60);
-                                      if (to <= from) return null;
-                                      return (
-                                        <div
-                                          className="absolute left-1 right-1 z-0 rounded-[4px] bg-blue-500/15 border border-blue-500/40 pointer-events-none"
-                                          style={{
-                                            top: `${((from - hr * 60) / 60) * 100}%`,
-                                            height: `${((to - from) / 60) * 100}%`,
-                                          }}
-                                        />
-                                      );
-                                    })()}
-
-                                  {/* NOVO: linha da hora atual, só na coluna de hoje e só na hora certa */}
-                                  {dStr === todayStr &&
-                                    nowMinutes >= hr * 60 &&
-                                    nowMinutes < hr * 60 + 60 && (
-                                      <div
-                                        className="absolute left-0 right-0 z-20 pointer-events-none"
-                                        style={{ top: `${((nowMinutes - hr * 60) / 60) * 100}%` }}
-                                      >
-                                        <div className="relative h-px bg-rose-500">
-                                          <span className="absolute -left-1 -top-[3px] w-[7px] h-[7px] rounded-full bg-rose-500" />
-                                        </div>
+                                  {slotEvents.map((ev) => (
+                                    <div
+                                      key={ev.id}
+                                      style={{ borderLeftColor: ev.color }}
+                                      className="px-2 py-1 rounded-[4px] bg-sky-50/70 border border-sky-200/60 border-l-[2.5px] text-[10px] text-zinc-800 font-medium"
+                                    >
+                                      <div className="font-mono-num text-zinc-500">
+                                        {ev.startTime} – {ev.endTime}
                                       </div>
-                                    )}
-
-                                  {/* Conteúdo: deixa o clique passar, exceto nas tarefas e eventos */}
-                                  <div className="relative z-10 p-1 space-y-1 pointer-events-none">
-                                    {slotEvents.map((ev) => (
+                                      <div className="truncate">{ev.title}</div>
+                                    </div>
+                                  ))}
+                                  {visibleSlotTasks.map((t) => {
+                                    const accentColor = getTaskAccentColor(t);
+                                    const isSelectedHere =
+                                      selectedTaskId === t.id && selectedCellDate === dStr;
+                                    return (
                                       <div
-                                        key={ev.id}
-                                        className="pointer-events-auto px-2 py-1 rounded-[4px] bg-sky-50/70 border border-sky-200/60 border-l-[3px] text-[10px] text-zinc-800 font-medium"
-                                        style={{ borderLeftColor: ev.color }}
-                                      >
-                                        <div className="font-mono-num text-zinc-500">
-                                          {ev.startTime} – {ev.endTime}
-                                        </div>
-                                        <div className="truncate">{ev.title}</div>
-                                      </div>
-                                    ))}
-
-                                    {visibleSlotTasks.map((t) => {
-                                      const accentColor = getTaskAccentColor(t);
-                                      const isSelectedHere =
-                                        selectedTaskId === t.id && selectedCellDate === dStr;
-                                      return (
-                                        <div
-                                          key={t.id}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setSelectedCellDate(dStr);
-                                            setSelectedTaskId(t.id);
-                                          }}
-                                          style={{ borderLeftColor: accentColor }}
-                                          className={`pointer-events-auto px-2 py-1 rounded-[4px] border border-l-[3px] text-[11px] font-medium cursor-pointer transition-colors ${
-                                            isSelectedHere
-                                              ? 'bg-blue-50 border-blue-300 text-blue-950'
-                                              : t.priority === 5
-                                                ? 'bg-rose-50/80 border-rose-200/70 text-rose-950'
-                                                : t.priority === 3
-                                                  ? 'bg-amber-50/80 border-amber-200/70 text-amber-950'
-                                                  : 'bg-zinc-50/90 hover:bg-zinc-100 border-zinc-200/80 text-zinc-800'
-                                          }`}
-                                        >
-                                          <div className="flex items-center justify-between text-[10px] font-mono-num text-zinc-500">
-                                            <span>
-                                              {t.startTime}
-                                              {t.endTime ? ` – ${t.endTime}` : ''}
-                                            </span>
-                                            {t.durationMinutes && <span>{t.durationMinutes}m</span>}
-                                          </div>
-                                          <div className="truncate font-semibold flex items-center justify-between gap-1">
-                                            <span className="truncate">{t.title}</span>
-                                            {t.recurrenceRule && (
-                                              <Repeat className="w-2.5 h-2.5 shrink-0 text-zinc-400" />
-                                            )}
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-
-                                    {hiddenSlotCount > 0 && (
-                                      <button
-                                        type="button"
+                                        key={t.id}
+                                        {...dragProps(t.id)}
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          setExpandedDayDate(dStr);
+                                          setSelectedCellDate(dStr);
+                                          setSelectedTaskId(t.id);
                                         }}
-                                        className="pointer-events-auto w-full h-[19px] px-1.5 rounded-[4px] bg-zinc-100 hover:bg-zinc-200 text-[10px] font-mono-num font-semibold text-zinc-600 text-left"
+                                        style={{ borderLeftColor: accentColor }}
+                                        className={`px-2 py-1 rounded-[4px] border border-l-[3px] text-[11px] font-medium cursor-grab active:cursor-grabbing transition-colors ${
+                                          isSelectedHere
+                                            ? 'bg-blue-50 border-blue-300 text-blue-950'
+                                            : t.priority === 5
+                                              ? 'bg-rose-50/80 border-rose-200/70 text-rose-950'
+                                              : t.priority === 3
+                                                ? 'bg-amber-50/80 border-amber-200/70 text-amber-950'
+                                                : 'bg-zinc-50/90 hover:bg-zinc-100 border-zinc-200/80 text-zinc-800'
+                                        }`}
                                       >
-                                        +{hiddenSlotCount} more in this hour
-                                      </button>
-                                    )}
-                                  </div>
+                                        <div className="flex items-center justify-between text-[10px] font-mono-num text-zinc-500">
+                                          <span>
+                                            {t.startTime}
+                                            {t.endTime ? ` – ${t.endTime}` : ''}
+                                          </span>
+                                          {t.durationMinutes && <span>{t.durationMinutes}m</span>}
+                                        </div>
+                                        <div className="truncate font-semibold flex items-center justify-between gap-1">
+                                          <span className="truncate">{t.title}</span>
+                                          {t.recurrenceRule && (
+                                            <Repeat className="w-2.5 h-2.5 shrink-0 text-zinc-400" />
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+
+                                  {hiddenSlotCount > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setExpandedDayDate(dStr);
+                                      }}
+                                      className="w-full h-[19px] px-1.5 rounded-[4px] bg-zinc-100 hover:bg-zinc-200 text-[10px] font-mono-num font-semibold text-zinc-600 text-left"
+                                    >
+                                      +{hiddenSlotCount} more in this hour
+                                    </button>
+                                  )}
                                 </div>
                               );
                             })}
@@ -877,16 +982,11 @@ export const CalendarModule: React.FC = () => {
               <div className="max-w-3xl mx-auto p-3 sm:p-6 space-y-4 sm:space-y-5">
                 {Array.from({ length: 7 }, (_, i) => addDays(cursorDate, i)).map((day) => {
                   const dStr = format(day, 'yyyy-MM-dd');
-                  const dayTasks = sortDayTasks(
-                    activeTasks.filter((t) => isTaskDueOnDate(t, dStr))
-                  );
+                  const dayTasks = sortDayTasks(activeTasks.filter((t) => isTaskDueOnDate(t, dStr)));
                   const dayEvents = externalEvents.filter((ev) => ev.date === dStr);
 
                   return (
-                    <div
-                      key={dStr}
-                      className="surface-card rounded-xl p-4 space-y-2.5"
-                    >
+                    <div key={dStr} className="surface-card rounded-xl p-4 space-y-2.5">
                       <div className="flex items-center justify-between border-b border-zinc-100 pb-2">
                         <span className="text-xs font-semibold text-zinc-900">
                           {format(day, 'EEEE, MMMM d')}
@@ -932,9 +1032,7 @@ export const CalendarModule: React.FC = () => {
                                     }}
                                     className="rounded text-zinc-900"
                                   />
-                                  <span className="font-medium text-zinc-800">
-                                    {t.title}
-                                  </span>
+                                  <span className="font-medium text-zinc-800">{t.title}</span>
                                 </div>
                                 <span className="font-mono-num text-[11px] text-zinc-500 flex items-center gap-1">
                                   <Clock className="w-3 h-3" strokeWidth={1.75} />
@@ -948,8 +1046,7 @@ export const CalendarModule: React.FC = () => {
                               <div className="flex items-center gap-1 text-[11px] font-semibold text-zinc-400 px-1">
                                 <ChevronDown className="w-3 h-3" />
                                 <span>
-                                  Completed{' '}
-                                  {dayTasks.filter((t) => t.status === 'completed').length}
+                                  Completed {dayTasks.filter((t) => t.status === 'completed').length}
                                 </span>
                               </div>
                               {dayTasks
@@ -973,9 +1070,7 @@ export const CalendarModule: React.FC = () => {
                                         }}
                                         className="rounded text-zinc-400"
                                       />
-                                      <span className="font-medium text-zinc-400">
-                                        {t.title}
-                                      </span>
+                                      <span className="font-medium text-zinc-400">{t.title}</span>
                                     </div>
                                     <span className="font-mono-num text-[11px] text-zinc-400 flex items-center gap-1">
                                       <Clock className="w-3 h-3" strokeWidth={1.75} />
@@ -994,7 +1089,7 @@ export const CalendarModule: React.FC = () => {
             )}
           </div>
 
-          {/* Unscheduled Tasks Arrangement Drawer */}
+          {/* Gaveta "Arrange Tasks" */}
           {showUnscheduledDrawer && (
             <>
               <div
@@ -1021,13 +1116,14 @@ export const CalendarModule: React.FC = () => {
                   </div>
                 </div>
                 <p className="text-[11px] text-zinc-500 mb-3">
-                  Schedule any undated task to time-block it onto your active calendar date.
+                  Arraste a tarefa para a grade ou clique em agendar no dia atual.
                 </p>
                 <div className="space-y-2 overflow-y-auto flex-1">
                   {unscheduledTasks.map((t) => (
                     <div
                       key={t.id}
-                      className="p-2.5 rounded-lg bg-white border border-zinc-200/80 space-y-2"
+                      {...dragProps(t.id)}
+                      className="p-2.5 rounded-lg bg-white border border-zinc-200/80 space-y-2 cursor-grab active:cursor-grabbing"
                     >
                       <div className="text-xs font-medium text-zinc-800">{t.title}</div>
                       <button
@@ -1056,10 +1152,10 @@ export const CalendarModule: React.FC = () => {
         </div>
       </div>
 
-      {/* Right Task Detail Inspector */}
+      {/* Painel de detalhes da tarefa */}
       <TaskDetailPane />
 
-      {/* Day Schedule Overview Popover / Sheet (Opens on +N more or day count click) */}
+      {/* Visão do dia (+N mais) */}
       {expandedDayDate && (
         <div
           onClick={() => setExpandedDayDate(null)}
@@ -1081,7 +1177,6 @@ export const CalendarModule: React.FC = () => {
 
               return (
                 <>
-                  {/* Header */}
                   <div className="px-4 py-3 border-b border-zinc-200/80 flex items-center justify-between bg-zinc-50/60">
                     <div>
                       <h3 className="text-sm font-semibold text-zinc-900 tracking-tight">
@@ -1103,7 +1198,6 @@ export const CalendarModule: React.FC = () => {
                     </button>
                   </div>
 
-                  {/* Chronological Item List */}
                   <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
                     {dayEvents.map((ev) => (
                       <div
@@ -1162,9 +1256,7 @@ export const CalendarModule: React.FC = () => {
                                   )}
                                 </div>
                                 {taskList && (
-                                  <div className="text-[10px] text-zinc-400 truncate">
-                                    {taskList.name}
-                                  </div>
+                                  <div className="text-[10px] text-zinc-400 truncate">{taskList.name}</div>
                                 )}
                               </div>
                             </div>
@@ -1178,7 +1270,6 @@ export const CalendarModule: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Quick Add Footer inside Day Overview */}
                   <form
                     onSubmit={handleCreateInExpandedDay}
                     className="p-3 border-t border-zinc-200/80 bg-zinc-50/60 flex items-center gap-2"
@@ -1204,10 +1295,10 @@ export const CalendarModule: React.FC = () => {
         </div>
       )}
 
-      {/* Quick Create Task on Selected Date Modal */}
+      {/* Criar tarefa rápida em um dia */}
       {quickCellDate && (
         <div
-          onClick={closeQuick}
+          onClick={() => setQuickCellDate(null)}
           className="fixed inset-0 z-50 bg-zinc-950/40 backdrop-blur-[2px] flex items-center justify-center p-4 animate-backdrop"
         >
           <form
@@ -1217,11 +1308,6 @@ export const CalendarModule: React.FC = () => {
           >
             <h3 className="text-sm font-semibold text-zinc-900">
               Schedule Task on {format(parseISO(quickCellDate), 'EEEE, MMM d')}
-              {quickRange && (
-                <span className="block text-xs font-mono-num text-zinc-500 mt-0.5">
-                  {toHM(quickRange.start)} – {toHM(quickRange.end)}
-                </span>
-              )}
             </h3>
             <input
               type="text"
@@ -1235,7 +1321,7 @@ export const CalendarModule: React.FC = () => {
             <div className="flex justify-end gap-2">
               <button
                 type="button"
-                onClick={closeQuick}
+                onClick={() => setQuickCellDate(null)}
                 className="px-3 py-1.5 rounded-lg text-xs text-zinc-600 hover:bg-zinc-100"
               >
                 Cancel
@@ -1251,7 +1337,7 @@ export const CalendarModule: React.FC = () => {
         </div>
       )}
 
-      {/* External Calendar Subscriptions Modal (Premium) */}
+      {/* Assinaturas de calendários externos */}
       {showSubModal && (
         <div
           onClick={() => setShowSubModal(false)}
@@ -1282,10 +1368,7 @@ export const CalendarModule: React.FC = () => {
                 >
                   <div className="min-w-0">
                     <div className="text-xs font-semibold text-zinc-800 flex items-center gap-2">
-                      <span
-                        className="w-2 h-2 rounded-full"
-                        style={{ backgroundColor: sub.color }}
-                      />
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: sub.color }} />
                       {sub.name}
                     </div>
                     <div className="text-[10px] font-mono text-zinc-400 truncate">{sub.url}</div>
@@ -1315,9 +1398,7 @@ export const CalendarModule: React.FC = () => {
               }}
               className="space-y-2.5 pt-2 border-t border-zinc-200/80"
             >
-              <div className="text-xs font-semibold text-zinc-700">
-                Subscribe via ICS / Webcal URL
-              </div>
+              <div className="text-xs font-semibold text-zinc-700">Subscribe via ICS / Webcal URL</div>
               <div className="grid grid-cols-2 gap-2">
                 <input
                   type="text"
