@@ -623,3 +623,715 @@ export const CalendarModule: React.FC = () => {
                               className="p-2 border-r border-zinc-200/80 flex flex-col gap-1 min-w-0"
                             >
                               <div className="flex items-center justify-between gap-1">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span className="text-[11px] font-medium text-zinc-500">
+                                    {format(d, 'EEE')}
+                                  </span>
+                                  <span
+                                    className={`text-xs font-mono-num px-1.5 py-0.5 rounded-md ${
+                                      dStr === todayStr
+                                        ? 'bg-zinc-900 text-white font-semibold'
+                                        : 'text-zinc-800 font-semibold'
+                                    }`}
+                                  >
+                                    {format(d, 'd')}
+                                  </span>
+                                </div>
+                                {dayAllTasks.length > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setExpandedDayDate(dStr)}
+                                    title={`View all ${dayAllTasks.length} tasks on ${format(d, 'MMM d')}`}
+                                    className="text-[10px] font-mono-num text-zinc-400 hover:text-zinc-800 px-1 py-0.5 rounded hover:bg-zinc-200/60 transition-colors"
+                                  >
+                                    {dayAllTasks.length}d
+                                  </button>
+                                )}
+                              </div>
+
+                              {visibleAllDay.length > 0 && (
+                                <div className="space-y-1 pt-0.5">
+                                  {visibleAllDay.map((t) => {
+                                    const accentColor = getTaskAccentColor(t);
+                                    const isSelectedHere =
+                                      selectedTaskId === t.id && selectedCellDate === dStr;
+                                    return (
+                                      <div
+                                        key={t.id}
+                                        onClick={() => {
+                                          setSelectedCellDate(dStr);
+                                          setSelectedTaskId(t.id);
+                                        }}
+                                        style={{ borderLeftColor: accentColor }}
+                                        className={`h-[21px] px-1.5 rounded-[4px] border border-zinc-200/70 border-l-[2.5px] text-[10px] font-medium truncate cursor-pointer flex items-center justify-between gap-1 transition-colors ${
+                                          isSelectedHere
+                                            ? 'bg-blue-50 text-blue-950 ring-1 ring-blue-500/30 font-semibold'
+                                            : t.status === 'completed'
+                                              ? 'bg-zinc-100/70 text-zinc-400'
+                                              : 'bg-white hover:bg-zinc-100/80 text-zinc-800'
+                                        }`}
+                                      >
+                                        <span className="truncate">{t.title}</span>
+                                        {t.recurrenceRule && (
+                                          <Repeat className="w-2.5 h-2.5 shrink-0 text-zinc-400" />
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+
+                                  {hiddenAllDayCount > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setExpandedDayDate(dStr)}
+                                      className="w-full h-[19px] px-1.5 rounded-[4px] bg-zinc-200/60 hover:bg-zinc-200 text-[10px] font-mono-num font-semibold text-zinc-600 hover:text-zinc-900 text-left transition-colors"
+                                    >
+                                      +{hiddenAllDayCount} more all-day
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Hourly Time-Blocking Rows */}
+                      {hours.map((hr) => {
+                        const hrPrefix = String(hr).padStart(2, '0');
+                        return (
+                          <div
+                            key={hr}
+                            style={{
+                              gridTemplateColumns: `64px repeat(${cols.length}, minmax(0, 1fr))`,
+                            }}
+                            className="grid border-b border-zinc-100 min-h-[54px]"
+                          >
+                            <div className="px-2 py-1 text-[10px] font-mono-num text-zinc-400 border-r border-zinc-200/80 text-right">
+                              {hrPrefix}:00
+                            </div>
+                            {cols.map((d) => {
+                              const dStr = format(d, 'yyyy-MM-dd');
+                              const slotTasks = sortDayTasks(
+                                activeTasks.filter(
+                                  (t) =>
+                                    isTaskDueOnDate(t, dStr) &&
+                                    t.startTime &&
+                                    t.startTime.startsWith(hrPrefix)
+                                )
+                              );
+                              const slotEvents = externalEvents.filter(
+                                (ev) => ev.date === dStr && ev.startTime.startsWith(hrPrefix)
+                              );
+
+                              const maxHourlyVisible = subView === 'day' ? 6 : 2;
+                              const visibleSlotTasks = slotTasks.slice(0, maxHourlyVisible);
+                              const hiddenSlotCount = Math.max(
+                                0,
+                                slotTasks.length - visibleSlotTasks.length
+                              );
+
+                              return (
+                                <div
+                                  key={`${dStr}-${hr}`}
+                                  className="relative border-r border-zinc-100 min-w-0 min-h-[64px]"
+                                >
+                                  {/* Camada de captura: 4 faixas de 15 min, atrás do conteúdo */}
+                                  <div className="absolute inset-0 flex flex-col z-0">
+                                    {[0, 1, 2, 3].map((q) => {
+                                      const m = hr * 60 + q * SLOT;
+                                      return (
+                                        <div
+                                          key={q}
+                                          data-slot-min={m}
+                                          data-date={dStr}
+                                          onPointerDown={(e) => startDragCreate(e, dStr, m)}
+                                          className="flex-1 hover:bg-zinc-50/70 cursor-crosshair"
+                                        />
+                                      );
+                                    })}
+                                  </div>
+
+                                  {/* Prévia do bloco que está sendo arrastado */}
+                                  {drag &&
+                                    drag.date === dStr &&
+                                    (() => {
+                                      const from = Math.max(drag.start, hr * 60);
+                                      const to = Math.min(drag.end, hr * 60 + 60);
+                                      if (to <= from) return null;
+                                      return (
+                                        <div
+                                          className="absolute left-1 right-1 z-0 rounded-[4px] bg-blue-500/15 border border-blue-500/40 pointer-events-none"
+                                          style={{
+                                            top: `${((from - hr * 60) / 60) * 100}%`,
+                                            height: `${((to - from) / 60) * 100}%`,
+                                          }}
+                                        />
+                                      );
+                                    })()}
+
+                                  {/* Conteúdo: deixa o clique passar, exceto nas tarefas e eventos */}
+                                  <div className="relative z-10 p-1 space-y-1 pointer-events-none">
+                                    {slotEvents.map((ev) => (
+                                      <div
+                                        key={ev.id}
+                                        className="pointer-events-auto px-2 py-1 rounded-[4px] bg-sky-50/70 border border-sky-200/60 border-l-[3px] text-[10px] text-zinc-800 font-medium"
+                                        style={{ borderLeftColor: ev.color }}
+                                      >
+                                        <div className="font-mono-num text-zinc-500">
+                                          {ev.startTime} – {ev.endTime}
+                                        </div>
+                                        <div className="truncate">{ev.title}</div>
+                                      </div>
+                                    ))}
+
+                                    {visibleSlotTasks.map((t) => {
+                                      const accentColor = getTaskAccentColor(t);
+                                      const isSelectedHere =
+                                        selectedTaskId === t.id && selectedCellDate === dStr;
+                                      return (
+                                        <div
+                                          key={t.id}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedCellDate(dStr);
+                                            setSelectedTaskId(t.id);
+                                          }}
+                                          style={{ borderLeftColor: accentColor }}
+                                          className={`pointer-events-auto px-2 py-1 rounded-[4px] border border-l-[3px] text-[11px] font-medium cursor-pointer transition-colors ${
+                                            isSelectedHere
+                                              ? 'bg-blue-50 border-blue-300 text-blue-950'
+                                              : t.priority === 5
+                                                ? 'bg-rose-50/80 border-rose-200/70 text-rose-950'
+                                                : t.priority === 3
+                                                  ? 'bg-amber-50/80 border-amber-200/70 text-amber-950'
+                                                  : 'bg-zinc-50/90 hover:bg-zinc-100 border-zinc-200/80 text-zinc-800'
+                                          }`}
+                                        >
+                                          <div className="flex items-center justify-between text-[10px] font-mono-num text-zinc-500">
+                                            <span>
+                                              {t.startTime}
+                                              {t.endTime ? ` – ${t.endTime}` : ''}
+                                            </span>
+                                            {t.durationMinutes && <span>{t.durationMinutes}m</span>}
+                                          </div>
+                                          <div className="truncate font-semibold flex items-center justify-between gap-1">
+                                            <span className="truncate">{t.title}</span>
+                                            {t.recurrenceRule && (
+                                              <Repeat className="w-2.5 h-2.5 shrink-0 text-zinc-400" />
+                                            )}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+
+                                    {hiddenSlotCount > 0 && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setExpandedDayDate(dStr);
+                                        }}
+                                        className="pointer-events-auto w-full h-[19px] px-1.5 rounded-[4px] bg-zinc-100 hover:bg-zinc-200 text-[10px] font-mono-num font-semibold text-zinc-600 text-left"
+                                      >
+                                        +{hiddenSlotCount} more in this hour
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+
+            {subView === 'agenda' && (
+              <div className="max-w-3xl mx-auto p-3 sm:p-6 space-y-4 sm:space-y-5">
+                {Array.from({ length: 7 }, (_, i) => addDays(cursorDate, i)).map((day) => {
+                  const dStr = format(day, 'yyyy-MM-dd');
+                  const dayTasks = sortDayTasks(
+                    activeTasks.filter((t) => isTaskDueOnDate(t, dStr))
+                  );
+                  const dayEvents = externalEvents.filter((ev) => ev.date === dStr);
+
+                  return (
+                    <div
+                      key={dStr}
+                      className="surface-card rounded-xl p-4 space-y-2.5"
+                    >
+                      <div className="flex items-center justify-between border-b border-zinc-100 pb-2">
+                        <span className="text-xs font-semibold text-zinc-900">
+                          {format(day, 'EEEE, MMMM d')}
+                        </span>
+                        <span className="text-[11px] font-mono-num text-zinc-400">
+                          {dayTasks.length + dayEvents.length} items
+                        </span>
+                      </div>
+
+                      {dayTasks.length === 0 && dayEvents.length === 0 ? (
+                        <p className="text-xs text-zinc-400">No scheduled items</p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {dayEvents.map((ev) => (
+                            <div
+                              key={ev.id}
+                              className="flex items-center justify-between px-3 py-2 rounded-lg bg-zinc-100 text-xs text-zinc-800"
+                            >
+                              <span className="font-semibold">{ev.title}</span>
+                              <span className="font-mono-num text-[11px] text-zinc-500">
+                                {ev.startTime} – {ev.endTime}
+                              </span>
+                            </div>
+                          ))}
+                          {dayTasks
+                            .filter((t) => t.status !== 'completed')
+                            .map((t) => (
+                              <div
+                                key={t.id}
+                                onClick={() => {
+                                  setSelectedCellDate(dStr);
+                                  setSelectedTaskId(t.id);
+                                }}
+                                className="flex items-center justify-between px-3 py-2 rounded-lg bg-zinc-50 hover:bg-zinc-100/80 text-xs cursor-pointer border border-zinc-200/60"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={false}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      toggleTaskStatus(t.id);
+                                    }}
+                                    className="rounded text-zinc-900"
+                                  />
+                                  <span className="font-medium text-zinc-800">
+                                    {t.title}
+                                  </span>
+                                </div>
+                                <span className="font-mono-num text-[11px] text-zinc-500 flex items-center gap-1">
+                                  <Clock className="w-3 h-3" strokeWidth={1.75} />
+                                  {t.startTime || 'All-Day'}
+                                </span>
+                              </div>
+                            ))}
+
+                          {dayTasks.some((t) => t.status === 'completed') && (
+                            <div className="pt-2 space-y-1">
+                              <div className="flex items-center gap-1 text-[11px] font-semibold text-zinc-400 px-1">
+                                <ChevronDown className="w-3 h-3" />
+                                <span>
+                                  Completed{' '}
+                                  {dayTasks.filter((t) => t.status === 'completed').length}
+                                </span>
+                              </div>
+                              {dayTasks
+                                .filter((t) => t.status === 'completed')
+                                .map((t) => (
+                                  <div
+                                    key={t.id}
+                                    onClick={() => {
+                                      setSelectedCellDate(dStr);
+                                      setSelectedTaskId(t.id);
+                                    }}
+                                    className="flex items-center justify-between px-3 py-2 rounded-lg bg-zinc-50/60 hover:bg-zinc-100/80 text-xs cursor-pointer border border-zinc-200/40"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="checkbox"
+                                        checked={true}
+                                        onChange={(e) => {
+                                          e.stopPropagation();
+                                          toggleTaskStatus(t.id);
+                                        }}
+                                        className="rounded text-zinc-400"
+                                      />
+                                      <span className="font-medium text-zinc-400">
+                                        {t.title}
+                                      </span>
+                                    </div>
+                                    <span className="font-mono-num text-[11px] text-zinc-400 flex items-center gap-1">
+                                      <Clock className="w-3 h-3" strokeWidth={1.75} />
+                                      {t.startTime || 'All-Day'}
+                                    </span>
+                                  </div>
+                                ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Unscheduled Tasks Arrangement Drawer */}
+          {showUnscheduledDrawer && (
+            <>
+              <div
+                onClick={() => setShowUnscheduledDrawer(false)}
+                className="lg:hidden fixed inset-0 z-30 bg-zinc-950/40 backdrop-blur-[2px] animate-backdrop"
+              />
+              <aside className="fixed inset-x-0 bottom-0 z-40 max-h-[68dvh] rounded-t-2xl shadow-2xl lg:shadow-none lg:rounded-none lg:max-h-none lg:static lg:z-auto w-full lg:w-64 border-t lg:border-t-0 lg:border-l border-zinc-200/80 bg-white lg:bg-zinc-50/70 p-4 pb-20 lg:p-3 flex flex-col shrink-0 animate-sheet-up lg:[animation:none]">
+                <div className="lg:hidden w-10 h-1 rounded-full bg-zinc-300 mx-auto mb-3 shrink-0" />
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-zinc-800 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-zinc-600" strokeWidth={1.75} />
+                    Arrange Tasks
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono-num text-zinc-400">
+                      {unscheduledTasks.length} undated
+                    </span>
+                    <button
+                      onClick={() => setShowUnscheduledDrawer(false)}
+                      className="lg:hidden p-1 rounded-md text-zinc-400 hover:bg-zinc-100"
+                    >
+                      <X className="w-3.5 h-3.5" strokeWidth={1.75} />
+                    </button>
+                  </div>
+                </div>
+                <p className="text-[11px] text-zinc-500 mb-3">
+                  Schedule any undated task to time-block it onto your active calendar date.
+                </p>
+                <div className="space-y-2 overflow-y-auto flex-1">
+                  {unscheduledTasks.map((t) => (
+                    <div
+                      key={t.id}
+                      className="p-2.5 rounded-lg bg-white border border-zinc-200/80 space-y-2"
+                    >
+                      <div className="text-xs font-medium text-zinc-800">{t.title}</div>
+                      <button
+                        onClick={() =>
+                          updateTask(
+                            t.id,
+                            {
+                              dueDate: format(cursorDate, 'yyyy-MM-dd'),
+                              startDate: format(cursorDate, 'yyyy-MM-dd'),
+                              startTime: '10:00',
+                              durationMinutes: 60,
+                            },
+                            `Time-blocked onto ${format(cursorDate, 'MMM d')} at 10:00`
+                          )
+                        }
+                        className="w-full py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-[11px] font-semibold font-mono-num"
+                      >
+                        + Schedule on {format(cursorDate, 'MMM d')}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </aside>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Right Task Detail Inspector */}
+      <TaskDetailPane />
+
+      {/* Day Schedule Overview Popover / Sheet (Opens on +N more or day count click) */}
+      {expandedDayDate && (
+        <div
+          onClick={() => setExpandedDayDate(null)}
+          className="fixed inset-0 z-50 bg-zinc-950/35 backdrop-blur-[1px] flex items-center justify-center p-4 animate-backdrop"
+        >
+          <div
+            role="dialog"
+            aria-label="Day Schedule Overview"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white border border-zinc-200/90 rounded-xl shadow-xl w-full max-w-md overflow-hidden flex flex-col max-h-[80dvh] animate-modal"
+          >
+            {(() => {
+              const dayObj = parseISO(expandedDayDate);
+              const dayTasks = sortDayTasks(
+                activeTasks.filter((t) => isTaskDueOnDate(t, expandedDayDate))
+              );
+              const dayEvents = externalEvents.filter((ev) => ev.date === expandedDayDate);
+              const completedCount = dayTasks.filter((t) => t.status === 'completed').length;
+
+              return (
+                <>
+                  {/* Header */}
+                  <div className="px-4 py-3 border-b border-zinc-200/80 flex items-center justify-between bg-zinc-50/60">
+                    <div>
+                      <h3 className="text-sm font-semibold text-zinc-900 tracking-tight">
+                        {format(dayObj, 'EEEE, MMMM d, yyyy')}
+                      </h3>
+                      <p className="text-[11px] font-mono-num text-zinc-500 mt-0.5">
+                        {dayTasks.length} {dayTasks.length === 1 ? 'task' : 'tasks'}
+                        {dayEvents.length > 0 ? ` · ${dayEvents.length} events` : ''}
+                        {completedCount > 0 ? ` · ${completedCount} completed` : ''}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="Close day overview"
+                      onClick={() => setExpandedDayDate(null)}
+                      className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-800 hover:bg-zinc-200/60 transition-colors"
+                    >
+                      <X className="w-4 h-4" strokeWidth={1.75} />
+                    </button>
+                  </div>
+
+                  {/* Chronological Item List */}
+                  <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+                    {dayEvents.map((ev) => (
+                      <div
+                        key={ev.id}
+                        style={{ borderLeftColor: ev.color }}
+                        className="px-3 py-2 rounded-lg bg-sky-50/60 border border-sky-200/60 border-l-[3px] flex items-center justify-between text-xs"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-semibold text-zinc-800 truncate">{ev.title}</div>
+                          <div className="text-[10px] text-zinc-500">{ev.calendarName}</div>
+                        </div>
+                        <span className="font-mono-num text-[11px] text-zinc-600 shrink-0 ml-2">
+                          {ev.startTime} – {ev.endTime}
+                        </span>
+                      </div>
+                    ))}
+
+                    {dayTasks.length === 0 && dayEvents.length === 0 ? (
+                      <div className="py-8 text-center text-xs text-zinc-400">
+                        No tasks scheduled for this date.
+                      </div>
+                    ) : (
+                      dayTasks.map((t) => {
+                        const isDone = t.status === 'completed';
+                        const accentColor = getTaskAccentColor(t);
+                        const taskList = lists.find((l) => l.id === t.listId);
+
+                        return (
+                          <div
+                            key={t.id}
+                            onClick={() => {
+                              setSelectedCellDate(expandedDayDate);
+                              setSelectedTaskId(t.id);
+                              setExpandedDayDate(null);
+                            }}
+                            style={{ borderLeftColor: accentColor }}
+                            className={`px-3 py-2 rounded-lg border border-zinc-200/70 border-l-[3px] flex items-center justify-between gap-2.5 cursor-pointer transition-colors ${
+                              isDone
+                                ? 'bg-zinc-50/60 text-zinc-400'
+                                : 'bg-white hover:bg-zinc-50 text-zinc-900'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                              <input
+                                type="checkbox"
+                                checked={isDone}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={() => toggleTaskStatus(t.id)}
+                                className="rounded text-zinc-900 shrink-0"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="text-xs font-medium truncate flex items-center gap-1.5">
+                                  <span className="truncate">{t.title}</span>
+                                  {t.recurrenceRule && (
+                                    <Repeat className="w-3 h-3 text-zinc-400 shrink-0" />
+                                  )}
+                                </div>
+                                {taskList && (
+                                  <div className="text-[10px] text-zinc-400 truncate">
+                                    {taskList.name}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <span className="font-mono-num text-[11px] text-zinc-500 bg-zinc-100 px-1.5 py-0.5 rounded shrink-0">
+                              {t.startTime || 'All-Day'}
+                            </span>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Quick Add Footer inside Day Overview */}
+                  <form
+                    onSubmit={handleCreateInExpandedDay}
+                    className="p-3 border-t border-zinc-200/80 bg-zinc-50/60 flex items-center gap-2"
+                  >
+                    <input
+                      type="text"
+                      value={expandedDayNewTitle}
+                      onChange={(e) => setExpandedDayNewTitle(e.target.value)}
+                      placeholder={`+ Add task on ${format(dayObj, 'MMM d')}...`}
+                      className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-zinc-200 bg-white focus:outline-none focus:border-zinc-900"
+                    />
+                    <button
+                      type="submit"
+                      className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-semibold shrink-0"
+                    >
+                      Add
+                    </button>
+                  </form>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* Quick Create Task on Selected Date Modal */}
+      {quickCellDate && (
+        <div
+          onClick={closeQuick}
+          className="fixed inset-0 z-50 bg-zinc-950/40 backdrop-blur-[2px] flex items-center justify-center p-4 animate-backdrop"
+        >
+          <form
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={handleCreateOnDate}
+            className="surface-floating rounded-xl w-full max-w-sm p-5 space-y-3 animate-modal"
+          >
+            <h3 className="text-sm font-semibold text-zinc-900">
+              Schedule Task on {format(parseISO(quickCellDate), 'EEEE, MMM d')}
+              {quickRange && (
+                <span className="block text-xs font-mono-num text-zinc-500 mt-0.5">
+                  {toHM(quickRange.start)} – {toHM(quickRange.end)}
+                </span>
+              )}
+            </h3>
+            <input
+              type="text"
+              autoFocus
+              required
+              value={quickCellTitle}
+              onChange={(e) => setQuickCellTitle(e.target.value)}
+              placeholder="Task title..."
+              className="w-full px-3 py-2 text-xs rounded-lg border border-zinc-300 focus:outline-none focus:border-zinc-900"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeQuick}
+                className="px-3 py-1.5 rounded-lg text-xs text-zinc-600 hover:bg-zinc-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-zinc-900 text-white hover:bg-zinc-800"
+              >
+                Add to Calendar
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* External Calendar Subscriptions Modal (Premium) */}
+      {showSubModal && (
+        <div
+          onClick={() => setShowSubModal(false)}
+          className="fixed inset-0 z-50 bg-zinc-950/40 backdrop-blur-[2px] flex items-center justify-center p-4 animate-backdrop"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="surface-floating rounded-xl w-full max-w-md p-5 space-y-4 animate-modal"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-zinc-900 flex items-center gap-2">
+                <Globe className="w-4 h-4 text-zinc-700" strokeWidth={1.75} />
+                External Calendar Subscriptions
+              </h3>
+              <button
+                onClick={() => setShowSubModal(false)}
+                className="p-1 rounded-md text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100"
+              >
+                <X className="w-4 h-4" strokeWidth={1.75} />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              {calendarSubscriptions.map((sub) => (
+                <div
+                  key={sub.id}
+                  className="flex items-center justify-between p-2.5 rounded-lg bg-zinc-50 border border-zinc-200/80"
+                >
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold text-zinc-800 flex items-center gap-2">
+                      <span
+                        className="w-2 h-2 rounded-full"
+                        style={{ backgroundColor: sub.color }}
+                      />
+                      {sub.name}
+                    </div>
+                    <div className="text-[10px] font-mono text-zinc-400 truncate">{sub.url}</div>
+                  </div>
+                  <button
+                    onClick={() => toggleCalendarSubscription(sub.id)}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-semibold ${
+                      sub.enabled
+                        ? 'bg-emerald-50 border border-emerald-200/80 text-emerald-700'
+                        : 'bg-zinc-200 text-zinc-600'
+                    }`}
+                  >
+                    {sub.enabled ? 'Synced' : 'Paused'}
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (subName.trim() && subUrl.trim()) {
+                  addCalendarSubscription(subName.trim(), subUrl.trim(), subProvider, '#0ea5e9');
+                  setSubName('');
+                  setSubUrl('');
+                }
+              }}
+              className="space-y-2.5 pt-2 border-t border-zinc-200/80"
+            >
+              <div className="text-xs font-semibold text-zinc-700">
+                Subscribe via ICS / Webcal URL
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  required
+                  value={subName}
+                  onChange={(e) => setSubName(e.target.value)}
+                  placeholder="Calendar Name (e.g. Outlook)"
+                  className="px-2.5 py-1.5 text-xs rounded-lg border border-zinc-300"
+                />
+                <select
+                  value={subProvider}
+                  onChange={(e) => setSubProvider(e.target.value as typeof subProvider)}
+                  className="px-2.5 py-1.5 text-xs rounded-lg border border-zinc-300 bg-white"
+                >
+                  <option value="google">Google Calendar</option>
+                  <option value="outlook">Outlook Calendar</option>
+                  <option value="apple">Apple iCloud</option>
+                  <option value="ics">Custom ICS Feed</option>
+                </select>
+              </div>
+              <input
+                type="text"
+                required
+                value={subUrl}
+                onChange={(e) => setSubUrl(e.target.value)}
+                placeholder="webcal:// or https://.../basic.ics"
+                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-zinc-300 font-mono"
+              />
+              <button
+                type="submit"
+                className="w-full py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-semibold flex items-center justify-center gap-1.5"
+              >
+                <Check className="w-3.5 h-3.5" strokeWidth={2} /> Connect Calendar Feed
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
