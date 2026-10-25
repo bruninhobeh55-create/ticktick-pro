@@ -38,6 +38,7 @@ import { useApp } from '../context/AppContext';
 import { Priority, Task, TaskList, ViewMode } from '../types';
 import { parseNaturalLanguageTask } from '../utils/nlpParser';
 import { isTaskDueOnDate, isTaskDueInDateRange } from '../utils/recurringTasks';
+import { GeminiTaskButton } from './GeminiTaskButton';
 
 const PRIORITY_BORDER: Record<Priority, string> = {
   5: 'border-rose-500 text-rose-500 hover:bg-rose-50',
@@ -1429,6 +1430,7 @@ export const TaskWorkspace: React.FC = () => {
           </div>
         )}
       </div>
+      <GeminiTaskButton />
     </main>
   );
 };
