@@ -1161,9 +1161,9 @@ export const CalendarModule: React.FC = () => {
                                         onMouseDown={(e) => startResize(e, task, start, rowHeight)}
                                         onClick={(e) => e.stopPropagation()}
                                         onDragStart={(e) => e.preventDefault()}
-                                        className="absolute left-0 right-0 bottom-0 h-3 cursor-ns-resize flex items-end justify-center"
+                                        className="absolute left-0 right-0 bottom-0 h-4 cursor-ns-resize flex items-end justify-center bg-blue-500/20 hover:bg-blue-500/40 transition-colors"
                                       >
-                                        <span className="w-3 h-3 rounded-full bg-blue-600 border-2 border-white shadow mb-0.5" />
+                                        <span className="w-4 h-4 rounded-full bg-blue-600 border-2 border-white shadow-md mb-0.5" />
                                       </div>
                                     )}
                                   </div>
