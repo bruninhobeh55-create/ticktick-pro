@@ -15,6 +15,38 @@ import { useApp } from '../context/AppContext';
 import { Habit, HabitLogEntry } from '../types';
 import { HABIT_ICON_KEYS, UiIcon } from './UiIcon';
 
+interface HabitGoalPreset {
+  id: string;
+  label: string;
+  unit: string;
+  defaultTarget: number;
+  example: string;
+}
+
+const HABIT_GOAL_PRESETS: HabitGoalPreset[] = [
+  { id: 'glasses', label: 'Glasses', unit: 'glasses', defaultTarget: 8, example: '8 glasses/day' },
+  { id: 'mins', label: 'Minutes', unit: 'mins', defaultTarget: 30, example: '30 mins/day' },
+  { id: 'pages', label: 'Pages', unit: 'pages', defaultTarget: 20, example: '20 pages/day' },
+  { id: 'times', label: 'Times', unit: 'times', defaultTarget: 3, example: '3 times/day' },
+  { id: 'ml', label: 'Water (ml)', unit: 'ml', defaultTarget: 2000, example: '2000 ml/day' },
+  { id: 'steps', label: 'Steps', unit: 'steps', defaultTarget: 10000, example: '10k steps/day' },
+];
+
+function getHabitStep(targetValue: number, unit: string): number {
+  const normalizedUnit = (unit || '').trim().toLowerCase();
+  if (normalizedUnit === 'glasses' || normalizedUnit === 'times') return 1;
+  if (normalizedUnit === 'ml' && targetValue >= 500) return 250;
+  if (normalizedUnit === 'steps' && targetValue >= 2000) return 2500;
+  if (normalizedUnit === 'mins') {
+    return targetValue <= 15 ? 5 : targetValue <= 45 ? 10 : 15;
+  }
+  if (normalizedUnit === 'pages') {
+    return targetValue <= 10 ? 1 : targetValue <= 30 ? 5 : 10;
+  }
+  if (targetValue <= 10) return 1;
+  return Math.max(1, Math.round(targetValue / 4));
+}
+
 export const HabitTrackerModule: React.FC = () => {
   const {
     habits,
@@ -168,6 +200,12 @@ export const HabitTrackerModule: React.FC = () => {
               setEditingHabitId(null);
               setName('');
               setQuote('');
+              setIcon('flame');
+              setColor('#10b981');
+              setSection('morning');
+              setGoalType('check');
+              setTargetValue(8);
+              setUnit('glasses');
               setShowNewModal(true);
             }}
             className="inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-semibold shrink-0"
@@ -552,21 +590,75 @@ export const HabitTrackerModule: React.FC = () => {
             </div>
 
             {selectedHabit.goalType === 'quantified' ? (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs font-mono-num">
-                  <span className="text-zinc-600">
-                    Logged: {selectedHabit.logs[todayStr]?.value || 0} / {selectedHabit.targetValue}{' '}
-                    {selectedHabit.unit}
-                  </span>
-                  <button
-                    onClick={() => toggleHabitDate(selectedHabit.id, todayStr)}
-                    className="px-2.5 py-1 rounded-lg bg-zinc-900 text-white text-[11px] font-semibold"
-                  >
-                    + Add {Math.max(1, Math.round(selectedHabit.targetValue / 4))}{' '}
-                    {selectedHabit.unit}
-                  </button>
-                </div>
-              </div>
+              (() => {
+                const currentVal = selectedHabit.logs[todayStr]?.value || 0;
+                const step = getHabitStep(selectedHabit.targetValue, selectedHabit.unit);
+                const pct = Math.min(100, Math.round((currentVal / selectedHabit.targetValue) * 100));
+                const isGoalMet = currentVal >= selectedHabit.targetValue;
+
+                return (
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between text-xs font-mono-num">
+                      <span className="text-zinc-700 font-semibold">
+                        {currentVal} / {selectedHabit.targetValue} {selectedHabit.unit}
+                      </span>
+                      <span
+                        className={`text-[11px] font-semibold ${
+                          isGoalMet ? 'text-emerald-600' : 'text-zinc-500'
+                        }`}
+                      >
+                        {pct}% {isGoalMet ? '• Goal Reached ✓' : ''}
+                      </span>
+                    </div>
+
+                    {/* Progress bar */}
+                    <div className="h-2 w-full rounded-full bg-zinc-100 overflow-hidden">
+                      <div
+                        style={{
+                          width: `${pct}%`,
+                          backgroundColor: isGoalMet ? '#10b981' : selectedHabit.color,
+                        }}
+                        className="h-full rounded-full transition-all duration-200"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      {currentVal > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => toggleHabitDate(selectedHabit.id, todayStr, -step)}
+                          title={`Subtract ${step} ${selectedHabit.unit}`}
+                          className="px-2.5 py-1.5 rounded-lg border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 text-zinc-700 text-[11px] font-mono-num font-semibold"
+                        >
+                          -{step}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => toggleHabitDate(selectedHabit.id, todayStr, step)}
+                        className="flex-1 py-1.5 px-3 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-[11px] font-mono-num font-semibold"
+                      >
+                        + Add {step} {selectedHabit.unit}
+                      </button>
+                      {!isGoalMet && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            toggleHabitDate(
+                              selectedHabit.id,
+                              todayStr,
+                              selectedHabit.targetValue - currentVal
+                            )
+                          }
+                          className="py-1.5 px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-[11px] font-semibold"
+                        >
+                          Complete All
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()
             ) : (
               <button
                 onClick={() => toggleHabitDate(selectedHabit.id, todayStr)}
@@ -704,7 +796,7 @@ export const HabitTrackerModule: React.FC = () => {
           <form
             onClick={(e) => e.stopPropagation()}
             onSubmit={handleCreateHabit}
-            className="surface-floating rounded-xl w-full max-w-md p-5 space-y-4 animate-modal"
+            className="surface-floating bg-white rounded-xl w-full max-w-md max-h-[90dvh] overflow-y-auto p-5 space-y-4 animate-modal"
           >
             <h3 className="text-sm font-semibold text-zinc-900">
               {editingHabitId ? 'Edit Habit' : 'Create New Habit'}
@@ -756,59 +848,197 @@ export const HabitTrackerModule: React.FC = () => {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-zinc-600 mb-1">Time of Day</label>
-                <select
-                  value={section}
-                  onChange={(e) => setSection(e.target.value as Habit['section'])}
-                  className="w-full px-2.5 py-2 text-xs rounded-lg border border-zinc-300 bg-white"
-                >
-                  <option value="morning">Morning</option>
-                  <option value="afternoon">Afternoon</option>
-                  <option value="evening">Evening</option>
-                  <option value="anytime">Anytime</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-zinc-600 mb-1">Goal Type</label>
-                <select
-                  value={goalType}
-                  onChange={(e) => setGoalType(e.target.value as Habit['goalType'])}
-                  className="w-full px-2.5 py-2 text-xs rounded-lg border border-zinc-300 bg-white"
-                >
-                  <option value="check">Achieve All (1 Check)</option>
-                  <option value="quantified">Reach Quantified Amount</option>
-                </select>
+            {/* Time of Day */}
+            <div>
+              <label className="block text-xs font-medium text-zinc-600 mb-1.5">Time of Day</label>
+              <div className="grid grid-cols-4 gap-1.5 bg-zinc-100 p-1 rounded-lg border border-zinc-200/70">
+                {(
+                  [
+                    ['morning', 'Morning'],
+                    ['afternoon', 'Afternoon'],
+                    ['evening', 'Evening'],
+                    ['anytime', 'Anytime'],
+                  ] as const
+                ).map(([secId, secLabel]) => (
+                  <button
+                    key={secId}
+                    type="button"
+                    onClick={() => setSection(secId)}
+                    className={`py-1.5 rounded-md text-[11px] font-semibold transition-all ${
+                      section === secId
+                        ? 'bg-white text-zinc-900 shadow-2xs'
+                        : 'text-zinc-500 hover:text-zinc-800'
+                    }`}
+                  >
+                    {secLabel}
+                  </button>
+                ))}
               </div>
             </div>
 
-            {goalType === 'quantified' && (
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-zinc-600 mb-1">
-                    Daily Target
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={targetValue}
-                    onChange={(e) => setTargetValue(Number(e.target.value))}
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-zinc-300 font-mono-num"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-zinc-600 mb-1">Unit</label>
-                  <input
-                    type="text"
-                    value={unit}
-                    onChange={(e) => setUnit(e.target.value)}
-                    placeholder="ml, pages, mins"
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-zinc-300"
-                  />
-                </div>
+            {/* Tracking Mode: Simple Check-in vs Preset Count/Measure */}
+            <div className="space-y-2.5">
+              <label className="block text-xs font-medium text-zinc-600">
+                How do you want to track it?
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setGoalType('check')}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${
+                    goalType === 'check'
+                      ? 'border-zinc-900 bg-zinc-900/[0.03] ring-1 ring-zinc-900'
+                      : 'border-zinc-200 hover:border-zinc-300 bg-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-zinc-900">Simple Check-in</span>
+                    <span
+                      className={`w-4 h-4 rounded-full flex items-center justify-center border ${
+                        goalType === 'check'
+                          ? 'bg-zinc-900 border-zinc-900 text-white'
+                          : 'border-zinc-300'
+                      }`}
+                    >
+                      {goalType === 'check' && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-zinc-500 mt-0.5">
+                    Done or Not Done (1 tap/day)
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGoalType('quantified');
+                    if (goalType === 'check' && targetValue <= 1) {
+                      setUnit('glasses');
+                      setTargetValue(8);
+                    }
+                  }}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${
+                    goalType === 'quantified'
+                      ? 'border-zinc-900 bg-zinc-900/[0.03] ring-1 ring-zinc-900'
+                      : 'border-zinc-200 hover:border-zinc-300 bg-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-zinc-900">Count / Measure</span>
+                    <span
+                      className={`w-4 h-4 rounded-full flex items-center justify-center border ${
+                        goalType === 'quantified'
+                          ? 'bg-zinc-900 border-zinc-900 text-white'
+                          : 'border-zinc-300'
+                      }`}
+                    >
+                      {goalType === 'quantified' && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-zinc-500 mt-0.5">
+                    Glasses, mins, pages, steps...
+                  </p>
+                </button>
               </div>
-            )}
+
+              {goalType === 'quantified' && (
+                <div className="p-3 rounded-xl bg-zinc-50 border border-zinc-200/80 space-y-3">
+                  <div>
+                    <div className="text-[11px] font-semibold text-zinc-600 mb-1.5">
+                      1. Pick a Unit Preset
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {HABIT_GOAL_PRESETS.map((preset) => {
+                        const isSelected = unit === preset.unit;
+                        return (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            onClick={() => {
+                              setUnit(preset.unit);
+                              setTargetValue(preset.defaultTarget);
+                            }}
+                            className={`px-2.5 py-1.5 rounded-[6px] border text-left transition-all ${
+                              isSelected
+                                ? 'bg-zinc-900 text-white border-zinc-900 shadow-2xs'
+                                : 'bg-white text-zinc-700 border-zinc-200/90 hover:bg-zinc-100'
+                            }`}
+                          >
+                            <div className="text-[11px] font-semibold leading-tight">
+                              {preset.label}
+                            </div>
+                            <div
+                              className={`text-[10px] font-mono-num mt-0.5 ${
+                                isSelected ? 'text-zinc-300' : 'text-zinc-400'
+                              }`}
+                            >
+                              {preset.example}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="habit-daily-target-input"
+                      className="block text-[11px] font-semibold text-zinc-600 mb-1.5"
+                    >
+                      2. Set Daily Target ({unit}/day)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const step = getHabitStep(targetValue, unit);
+                          setTargetValue((v) => Math.max(1, v - step));
+                        }}
+                        className="w-8 h-8 rounded-lg border border-zinc-300 bg-white hover:bg-zinc-100 text-zinc-700 font-mono-num font-bold text-sm flex items-center justify-center shrink-0"
+                      >
+                        -
+                      </button>
+                      <div className="relative flex-1">
+                        <input
+                          id="habit-daily-target-input"
+                          type="number"
+                          min={1}
+                          value={targetValue}
+                          onChange={(e) => setTargetValue(Math.max(1, Number(e.target.value)))}
+                          className="w-full px-3 py-1.5 pr-16 text-xs font-semibold rounded-lg border border-zinc-300 bg-white font-mono-num focus:outline-none focus:border-zinc-900"
+                        />
+                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-medium text-zinc-400 pointer-events-none">
+                          {unit}/day
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const step = getHabitStep(targetValue, unit);
+                          setTargetValue((v) => v + step);
+                        }}
+                        className="w-8 h-8 rounded-lg border border-zinc-300 bg-white hover:bg-zinc-100 text-zinc-700 font-mono-num font-bold text-sm flex items-center justify-center shrink-0"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Clear Live Tracking Preview */}
+              <div className="px-3 py-2 rounded-lg bg-zinc-100/80 border border-zinc-200/70 text-[11px] text-zinc-600 flex items-center justify-between gap-2">
+                <span>
+                  <strong className="text-zinc-800">Preview:</strong>{' '}
+                  {goalType === 'check'
+                    ? '1 tap on the circle marks the day 100% complete ✓'
+                    : `Goal: ${targetValue} ${unit}/day • Each tap adds +${getHabitStep(
+                        targetValue,
+                        unit
+                      )} ${unit}`}
+                </span>
+              </div>
+            </div>
 
             <div>
               <label className="block text-xs font-medium text-zinc-600 mb-1.5">Accent Color</label>

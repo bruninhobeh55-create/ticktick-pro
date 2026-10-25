@@ -1387,10 +1387,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (preferences.soundAlertEnabled) soundEngine.playCompletionBell();
           }
         } else {
-          const step = valueDelta ?? Math.max(1, Math.round(habit.targetValue / 4));
+          const normalizedUnit = (habit.unit || '').trim().toLowerCase();
+          let defaultStep = Math.max(1, Math.round(habit.targetValue / 4));
+          if (normalizedUnit === 'glasses' || normalizedUnit === 'times') {
+            defaultStep = 1;
+          } else if (normalizedUnit === 'ml' && habit.targetValue >= 500) {
+            defaultStep = 250;
+          } else if (normalizedUnit === 'steps' && habit.targetValue >= 2000) {
+            defaultStep = 2500;
+          } else if (normalizedUnit === 'mins') {
+            defaultStep = habit.targetValue <= 15 ? 5 : habit.targetValue <= 45 ? 10 : 15;
+          } else if (normalizedUnit === 'pages') {
+            defaultStep = habit.targetValue <= 10 ? 1 : habit.targetValue <= 30 ? 5 : 10;
+          } else if (habit.targetValue <= 10) {
+            defaultStep = 1;
+          }
+          const step = valueDelta ?? defaultStep;
           const currentVal = existing?.value ?? 0;
           const nextVal =
-            currentVal >= habit.targetValue && !valueDelta ? 0 : currentVal + step;
+            currentVal >= habit.targetValue && valueDelta === undefined
+              ? 0
+              : Math.min(habit.targetValue, currentVal + step);
           if (nextVal <= 0) {
             delete nextLogs[dateStr];
           } else {

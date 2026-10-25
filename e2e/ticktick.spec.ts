@@ -109,7 +109,7 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
     await deleteFocusBtns.first().click();
     await expect(deleteFocusBtns).toHaveCount(beforeFocusCount - 1);
 
-    // 4. Test Habit Tracker Log Filters & Deletion
+    // 4. Test Habit Tracker Log Filters, Deletion & Visual Goal Presets Modal
     await desktopRail.locator('button[aria-label="Habit Tracker"]').click();
     await expect(page.getByText(/Habit Journal & Mood Logs/i)).toBeVisible();
 
@@ -118,6 +118,16 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
     expect(beforeHabitLogCount).toBeGreaterThan(0);
     await deleteHabitLogBtns.first().click();
     await expect(deleteHabitLogBtns).toHaveCount(beforeHabitLogCount - 1);
+
+    // Test New Habit Modal with Visual Presets (Simple Check-in vs Count / Measure)
+    await page.getByRole('button', { name: /New Habit/i }).click();
+    await expect(page.getByText('How do you want to track it?')).toBeVisible();
+    await page.getByRole('button', { name: /Count \/ Measure/i }).click();
+    await page.getByRole('button', { name: 'Pages 20 pages/day' }).click();
+    await expect(page.getByText(/Goal: 20 pages\/day/i)).toBeVisible();
+    await page.getByPlaceholder('e.g. Practice Guitar 20m').fill('Read Technical Book');
+    await page.getByRole('button', { name: 'Create Habit' }).click();
+    await expect(page.getByText('Read Technical Book').last()).toBeVisible();
 
     // 5. Test Supabase Cloud Connection via Custom / Demo Project, Push & Pull
     await desktopRail.locator('button[aria-label="Supabase Backend Settings"]').click();
