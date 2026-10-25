@@ -284,4 +284,46 @@ test.describe('TickTick Pro — Desktop & Mobile E2E Suite', () => {
     await vertLayoutBtn.click();
     await expect(page.getByText('deep-work', { exact: true }).first()).toBeVisible();
   });
+
+  test('Background Wall-Clock Persistence & Wakeup for Pomodoro Timer & Stopwatch', async ({
+    page,
+    isMobile,
+  }) => {
+    await page.goto('/');
+
+    if (!isMobile) {
+      await page
+        .locator('aside[aria-label="Primary Module Navigation"] button[aria-label="Pomodoro & Focus"]')
+        .click();
+    } else {
+      await page
+        .locator('nav[aria-label="Mobile Bottom Navigation"] button[aria-label="Pomodoro & Focus"]')
+        .click();
+    }
+
+    // Switch to Stopwatch mode
+    await page.getByRole('button', { name: 'Stopwatch' }).first().click();
+    await page.getByRole('button', { name: /Start Focus/i }).click();
+
+    // Verify localStorage has the wall-clock base timestamp
+    const baseTimestamp = await page.evaluate(() =>
+      localStorage.getItem('ticktick_timer_stopwatch_base')
+    );
+    expect(baseTimestamp).not.toBeNull();
+
+    // Simulate 20 seconds passing in background by shifting the base timestamp back
+    await page.evaluate(() => {
+      const current = Number(localStorage.getItem('ticktick_timer_stopwatch_base'));
+      localStorage.setItem('ticktick_timer_stopwatch_base', String(current - 20000));
+      // Dispatch visibilitychange to simulate returning to the app
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    // Verify stopwatch immediately displays at least 20 seconds without pausing
+    await expect(page.locator('.surface-card').getByText(/00:2/)).toBeVisible();
+
+    // Reset stopwatch
+    await page.locator('button[title="Reset Timer"]').click();
+    await expect(page.locator('text=00:00').first()).toBeVisible();
+  });
 });

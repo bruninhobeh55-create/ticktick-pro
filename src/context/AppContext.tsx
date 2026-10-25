@@ -40,6 +40,7 @@ import {
   ViewMode,
 } from '../types';
 import { soundEngine, WhiteNoiseId } from '../utils/soundEngine';
+import { backgroundTimerEngine } from '../utils/backgroundTimer';
 import {
   requestDeviceNotificationPermission,
   sendDeviceNotification,
@@ -458,22 +459,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => window.clearInterval(repeatInterval);
   }, [activeReminder, preferences.soundAlertEnabled]);
 
-  // Pomodoro & Stopwatch global timer state
-  const [pomoMode, setPomoMode] = useState<'pomo' | 'stopwatch'>('pomo');
-  const [pomoPhase, setPomoPhase] = useState<'work' | 'short_break' | 'long_break'>('work');
-  const [pomoRunning, setPomoRunning] = useState(false);
-  const [pomoSecondsLeft, setPomoSecondsLeft] = useState(preferences.pomoDuration * 60);
-  const [stopwatchSeconds, setStopwatchSeconds] = useState(0);
+  // Pomodoro & Stopwatch global timer state with Background Wall-Clock Engine
+  const initialTimerState = useMemo(
+    () => backgroundTimerEngine.getInitialState(preferences.pomoDuration * 60),
+    []
+  );
+  const [pomoMode, setPomoModeState] = useState<'pomo' | 'stopwatch'>(initialTimerState.mode);
+  const [pomoPhase, setPomoPhaseState] = useState<'work' | 'short_break' | 'long_break'>(initialTimerState.pomoPhase);
+  const [pomoRunning, setPomoRunningState] = useState(initialTimerState.isRunning);
+  const [pomoSecondsLeft, setPomoSecondsLeft] = useState(initialTimerState.secondsLeft);
+  const [stopwatchSeconds, setStopwatchSeconds] = useState(initialTimerState.stopwatchSeconds);
   const [activePomoTaskId, setActivePomoTaskId] = useState<string | null>('task-1');
   const [activeWhiteNoise, setActiveWhiteNoiseState] = useState<WhiteNoiseId>('none');
   const [whiteNoiseVolume, setWhiteNoiseVolumeState] = useState(0.35);
 
+  const pomoModeRef = useRef(pomoMode);
+  pomoModeRef.current = pomoMode;
+  const pomoPhaseRef = useRef(pomoPhase);
+  pomoPhaseRef.current = pomoPhase;
+  const pomoRunningRef = useRef(pomoRunning);
+  pomoRunningRef.current = pomoRunning;
+  const pomoSecondsLeftRef = useRef(pomoSecondsLeft);
+  pomoSecondsLeftRef.current = pomoSecondsLeft;
+  const stopwatchSecondsRef = useRef(stopwatchSeconds);
+  stopwatchSecondsRef.current = stopwatchSeconds;
+  const activePomoTaskIdRef = useRef(activePomoTaskId);
+  activePomoTaskIdRef.current = activePomoTaskId;
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
+  const preferencesRef = useRef(preferences);
+  preferencesRef.current = preferences;
+  const updateTaskRef = useRef<(id: string, patch: Partial<Task>, note?: string) => void>(() => {});
+
+  // Handle preference duration adjustments when timer is idle
   useEffect(() => {
     if (!pomoRunning) {
-      if (pomoPhase === 'work') setPomoSecondsLeft(preferences.pomoDuration * 60);
-      else if (pomoPhase === 'short_break')
-        setPomoSecondsLeft(preferences.shortBreakDuration * 60);
-      else setPomoSecondsLeft(preferences.longBreakDuration * 60);
+      if (pomoPhase === 'work') {
+        const secs = preferences.pomoDuration * 60;
+        setPomoSecondsLeft(secs);
+        backgroundTimerEngine.resetTimer(secs);
+      } else if (pomoPhase === 'short_break') {
+        const secs = preferences.shortBreakDuration * 60;
+        setPomoSecondsLeft(secs);
+        backgroundTimerEngine.resetTimer(secs);
+      } else {
+        const secs = preferences.longBreakDuration * 60;
+        setPomoSecondsLeft(secs);
+        backgroundTimerEngine.resetTimer(secs);
+      }
     }
   }, [
     pomoPhase,
@@ -506,89 +539,181 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     soundEngine.setVolume(vol);
   };
 
-  useEffect(() => {
-    if (!pomoRunning) return;
-    const interval = window.setInterval(() => {
-      if (pomoMode === 'pomo') {
-        setPomoSecondsLeft((prev) => {
-          if (prev <= 1) {
-            soundEngine.playPomodoroCompleteAlarm();
-            return 0;
-          }
-          return prev - 1;
-        });
-      } else {
-        setStopwatchSeconds((prev) => prev + 1);
-      }
-    }, 1000);
-    return () => window.clearInterval(interval);
-  }, [pomoRunning, pomoMode]);
+  // Complete current Pomodoro / Stopwatch session
+  const completeCurrentPomoSession = useCallback(
+    (note = '') => {
+      const now = new Date();
+      const currentMode = pomoModeRef.current;
+      const currentSeconds = pomoSecondsLeftRef.current;
+      const currentStopwatch = stopwatchSecondsRef.current;
+      const prefs = preferencesRef.current;
+      const currentTaskId = activePomoTaskIdRef.current;
+      const currentTasks = tasksRef.current;
 
-  const resetPomoTimer = () => {
+      const elapsedMinutes =
+        currentMode === 'pomo'
+          ? Math.max(
+              1,
+              Math.round((prefs.pomoDuration * 60 - currentSeconds) / 60) ||
+                prefs.pomoDuration
+            )
+          : Math.max(1, Math.round(currentStopwatch / 60));
+
+      const targetTask = currentTasks.find((t) => t.id === currentTaskId);
+      const session: PomodoroSession = {
+        id: `pomo-${Date.now()}`,
+        taskId: targetTask?.id,
+        taskTitle: targetTask?.title || 'Deep Focus Session',
+        mode: currentMode,
+        startTime: new Date(now.getTime() - elapsedMinutes * 60 * 1000).toISOString(),
+        endTime: now.toISOString(),
+        durationMinutes: elapsedMinutes,
+        note: note || `Focused for ${elapsedMinutes} minutes`,
+        whiteNoiseUsed: activeWhiteNoise !== 'none' ? activeWhiteNoise : undefined,
+      };
+
+      setPomodoroSessions((prev) => [session, ...prev]);
+
+      if (targetTask) {
+        updateTaskRef.current(
+          targetTask.id,
+          {
+            completedPomos: targetTask.completedPomos + 1,
+            focusSeconds: targetTask.focusSeconds + elapsedMinutes * 60,
+          },
+          `Logged ${elapsedMinutes}m Pomodoro focus session`
+        );
+      }
+
+      setPreferences((prev) => ({
+        ...prev,
+        achievementScore: prev.achievementScore + 15,
+      }));
+
+      if (prefs.soundAlertEnabled) {
+        soundEngine.playPomodoroCompleteAlarm();
+      }
+      pushToast({
+        title: `Focus session logged (+${elapsedMinutes}m)`,
+        description: targetTask ? targetTask.title : 'Achievement Score +15',
+        kind: 'success',
+      });
+
+      // Reset timer state cleanly
+      setPomoRunningState(false);
+      soundEngine.stopWhiteNoise();
+      if (currentMode === 'pomo') {
+        const defaultSecs =
+          pomoPhaseRef.current === 'work'
+            ? prefs.pomoDuration * 60
+            : pomoPhaseRef.current === 'short_break'
+              ? prefs.shortBreakDuration * 60
+              : prefs.longBreakDuration * 60;
+        setPomoSecondsLeft(defaultSecs);
+        backgroundTimerEngine.resetTimer(defaultSecs);
+      } else {
+        setStopwatchSeconds(0);
+        backgroundTimerEngine.resetTimer(0);
+      }
+    },
+    [activeWhiteNoise, pushToast]
+  );
+
+  // Subscribe to Wall-Clock Background Timer Engine
+  useEffect(() => {
+    const unsubscribe = backgroundTimerEngine.subscribe(
+      (remaining, elapsed) => {
+        if (pomoModeRef.current === 'pomo') {
+          setPomoSecondsLeft(remaining);
+        } else {
+          setStopwatchSeconds(elapsed);
+        }
+      },
+      () => {
+        completeCurrentPomoSession('Completed full scheduled session');
+      }
+    );
+    return () => unsubscribe();
+  }, [completeCurrentPomoSession]);
+
+  const setPomoRunning = useCallback((running: boolean) => {
+    setPomoRunningState(running);
+    if (running) {
+      if (pomoModeRef.current === 'pomo') {
+        const targetTask = tasksRef.current.find(
+          (t) => t.id === activePomoTaskIdRef.current
+        );
+        backgroundTimerEngine.startPomodoro(
+          pomoSecondsLeftRef.current,
+          pomoPhaseRef.current,
+          targetTask?.title || 'Deep Focus Session'
+        );
+      } else {
+        backgroundTimerEngine.startStopwatch(stopwatchSecondsRef.current);
+      }
+    } else {
+      backgroundTimerEngine.pauseTimer();
+      soundEngine.stopWhiteNoise();
+    }
+  }, []);
+
+  const setPomoMode = useCallback(
+    (mode: 'pomo' | 'stopwatch') => {
+      setPomoRunning(false);
+      setPomoModeState(mode);
+      const prefs = preferencesRef.current;
+      if (mode === 'pomo') {
+        const dur =
+          pomoPhaseRef.current === 'work'
+            ? prefs.pomoDuration * 60
+            : pomoPhaseRef.current === 'short_break'
+              ? prefs.shortBreakDuration * 60
+              : prefs.longBreakDuration * 60;
+        setPomoSecondsLeft(dur);
+        backgroundTimerEngine.resetTimer(dur);
+      } else {
+        setStopwatchSeconds(0);
+        backgroundTimerEngine.resetTimer(0);
+      }
+    },
+    [setPomoRunning]
+  );
+
+  const setPomoPhase = useCallback(
+    (phase: 'work' | 'short_break' | 'long_break') => {
+      setPomoRunning(false);
+      setPomoPhaseState(phase);
+      const prefs = preferencesRef.current;
+      const dur =
+        phase === 'work'
+          ? prefs.pomoDuration * 60
+          : phase === 'short_break'
+            ? prefs.shortBreakDuration * 60
+            : prefs.longBreakDuration * 60;
+      setPomoSecondsLeft(dur);
+      backgroundTimerEngine.resetTimer(dur);
+    },
+    [setPomoRunning]
+  );
+
+  const resetPomoTimer = useCallback(() => {
     setPomoRunning(false);
     soundEngine.stopWhiteNoise();
-    if (pomoMode === 'pomo') {
-      if (pomoPhase === 'work') setPomoSecondsLeft(preferences.pomoDuration * 60);
-      else if (pomoPhase === 'short_break')
-        setPomoSecondsLeft(preferences.shortBreakDuration * 60);
-      else setPomoSecondsLeft(preferences.longBreakDuration * 60);
+    const prefs = preferencesRef.current;
+    if (pomoModeRef.current === 'pomo') {
+      const defaultSecs =
+        pomoPhaseRef.current === 'work'
+          ? prefs.pomoDuration * 60
+          : pomoPhaseRef.current === 'short_break'
+            ? prefs.shortBreakDuration * 60
+            : prefs.longBreakDuration * 60;
+      setPomoSecondsLeft(defaultSecs);
+      backgroundTimerEngine.resetTimer(defaultSecs);
     } else {
       setStopwatchSeconds(0);
+      backgroundTimerEngine.resetTimer(0);
     }
-  };
-
-  const completeCurrentPomoSession = (note = '') => {
-    const now = new Date();
-    const elapsedMinutes =
-      pomoMode === 'pomo'
-        ? Math.max(
-            1,
-            Math.round((preferences.pomoDuration * 60 - pomoSecondsLeft) / 60) ||
-              preferences.pomoDuration
-          )
-        : Math.max(1, Math.round(stopwatchSeconds / 60));
-
-    const targetTask = tasks.find((t) => t.id === activePomoTaskId);
-    const session: PomodoroSession = {
-      id: `pomo-${Date.now()}`,
-      taskId: targetTask?.id,
-      taskTitle: targetTask?.title || 'Deep Focus Session',
-      mode: pomoMode,
-      startTime: new Date(now.getTime() - elapsedMinutes * 60 * 1000).toISOString(),
-      endTime: now.toISOString(),
-      durationMinutes: elapsedMinutes,
-      note: note || `Focused for ${elapsedMinutes} minutes`,
-      whiteNoiseUsed: activeWhiteNoise !== 'none' ? activeWhiteNoise : undefined,
-    };
-
-    setPomodoroSessions((prev) => [session, ...prev]);
-
-    if (targetTask) {
-      updateTask(
-        targetTask.id,
-        {
-          completedPomos: targetTask.completedPomos + 1,
-          focusSeconds: targetTask.focusSeconds + elapsedMinutes * 60,
-        },
-        `Logged ${elapsedMinutes}m Pomodoro focus session`
-      );
-    }
-
-    setPreferences((prev) => ({
-      ...prev,
-      achievementScore: prev.achievementScore + 15,
-    }));
-
-    if (preferences.soundAlertEnabled) {
-      soundEngine.playPomodoroCompleteAlarm();
-    }
-    pushToast({
-      title: `Focus session logged (+${elapsedMinutes}m)`,
-      description: targetTask ? targetTask.title : 'Achievement Score +15',
-      kind: 'success',
-    });
-    resetPomoTimer();
-  };
+  }, [setPomoRunning]);
 
   const logManualFocusSession = (
     taskTitle: string,
@@ -740,6 +865,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
     );
   };
+  updateTaskRef.current = updateTask;
 
   const toggleTaskStatus = (id: string) => {
     const target = tasks.find((t) => t.id === id);
